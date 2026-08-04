@@ -1,0 +1,22 @@
+# SPDX-License-Identifier: GPL-2.0-only
+#
+# IMX708 GUI — Python dependencies
+#
+# Managed with uv. Install:
+#   curl -LsSf https://astral.sh/uv/install.sh | sh
+#   uv sync
+#
+# Or with pip:
+#   pip install -r requirements.txt
+#
+
+# grpcio-tools emits gencode that declares a MINIMUM protobuf runtime
+# version. With the bounds left open, a fresh "pip install" pulled
+# grpcio-tools 1.14.x (protobuf gencode 7.x) alongside an older protobuf
+# runtime and every start-up died with:
+#   ImportError: cannot import name 'runtime_version' from 'google.protobuf'
+# Keep grpcio, grpcio-tools and protobuf pinned to a single, coherent series.
+PySide6>=6.5,<7
+grpcio>=1.60,<2
+grpcio-tools>=1.60,<2
+protobuf>=4.25,<6

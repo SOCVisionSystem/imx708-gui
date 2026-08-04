@@ -1,0 +1,276 @@
+// SPDX-License-Identifier: GPL-2.0-only
+//
+// imx708.proto - gRPC service definition for Sony IMX708 camera sensor
+//
+// This service exposes every feature of the IMX708 sensor driver for
+// remote control and monitoring. Supports both unary and streaming RPCs.
+//
+
+syntax = "proto3";
+
+package imx708;
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum TestPattern {
+  TEST_PATTERN_DISABLED    = 0;
+  TEST_PATTERN_COLOR_BARS  = 1;
+  TEST_PATTERN_SOLID_COLOR = 2;
+  TEST_PATTERN_GREY_BARS   = 3;
+  TEST_PATTERN_PN9         = 4;
+}
+
+enum HdrMode {
+  HDR_OFF = 0;
+  HDR_ON   = 1;
+}
+
+enum PowerLineFreq {
+  PLF_DISABLED = 0;
+  PLF_50HZ     = 1;
+  PLF_60HZ     = 2;
+  PLF_AUTO     = 3;
+}
+
+enum SceneMode {
+  SCENE_AUTO        = 0;
+  SCENE_NIGHT       = 1;
+  SCENE_SPORT       = 2;
+  SCENE_LANDSCAPE   = 3;
+  SCENE_PORTRAIT    = 4;
+  SCENE_MACRO       = 5;
+  SCENE_FIREWORKS   = 6;
+  SCENE_SUNSETS     = 7;
+  SCENE_CANDLELIGHT = 8;
+}
+
+enum ColorEffect {
+  COLORFX_NONE       = 0;
+  COLORFX_BW         = 1;
+  COLORFX_SEPIA      = 2;
+  COLORFX_NEGATIVE   = 3;
+  COLORFX_EMBOSS     = 4;
+  COLORFX_SKETCH     = 5;
+  COLORFX_SKY_BLUE   = 6;
+  COLORFX_GRASS_GREEN = 7;
+  COLORFX_SKIN_WHITEN = 8;
+  COLORFX_VIVID      = 9;
+}
+
+// ---------------------------------------------------------------------------
+// Messages
+// ---------------------------------------------------------------------------
+
+message Empty {}
+
+message SensorStatus {
+  int32  temperature    = 1;  // degrees Celsius
+  uint32 frame_count    = 2;
+  bool   pll_locked     = 3;
+  bool   streaming      = 4;
+  bool   error          = 5;
+  uint32 gain           = 6;
+  uint32 digital_gain   = 7;
+  uint32 exposure       = 8;
+  uint32 width          = 9;
+  uint32 height         = 10;
+  uint32 fps            = 11;
+  string mode_name      = 12;
+}
+
+message ModeInfo {
+  uint32 index      = 1;
+  uint32 width      = 2;
+  uint32 height     = 3;
+  uint32 code       = 4;
+  uint32 fps        = 5;
+  uint32 hblank     = 6;
+  uint32 vblank     = 7;
+  uint32 bit_depth  = 8;
+  uint32 pixel_rate = 9;
+}
+
+message ModeList {
+  repeated ModeInfo modes = 1;
+}
+
+message GainConfig {
+  uint32 analog_gain  = 1;
+  uint32 digital_gain = 2;
+  uint32 gain_r       = 3;
+  uint32 gain_gr      = 4;
+  uint32 gain_gb      = 5;
+  uint32 gain_b       = 6;
+}
+
+message ExposureConfig {
+  uint32 exposure     = 1;
+  uint32 exposure_r   = 2;
+  uint32 exposure_gr  = 3;
+  uint32 exposure_gb  = 4;
+  uint32 exposure_b   = 5;
+}
+
+message HdrConfig {
+  HdrMode mode        = 1;
+  uint32  ratio       = 2;
+  uint32  exposure_s  = 3;
+  uint32  gain_s      = 4;
+}
+
+message TestPatternConfig {
+  TestPattern pattern    = 1;
+  uint32      color      = 2;
+  uint32      brightness = 3;
+  uint32      color_r    = 4;
+  uint32      color_gr   = 5;
+  uint32      color_b    = 6;
+  uint32      color_gb   = 7;
+}
+
+message ImageProcessingConfig {
+  int32  brightness       = 1;
+  int32  contrast         = 2;
+  int32  saturation       = 3;
+  int32  hue              = 4;
+  int32  sharpness        = 5;
+  int32  gamma            = 6;
+  bool   auto_wb          = 7;
+  uint32 wb_temperature   = 8;
+  int32  backlight_comp   = 9;
+  int32  power_line_freq  = 10;
+  int32  scene_mode       = 11;
+  int32  colorfx          = 12;
+  int32  zoom             = 13;
+  int32  pan              = 14;
+  int32  tilt             = 15;
+  bool   hflip            = 16;
+  bool   vflip            = 17;
+  int32  iso              = 18;
+  bool   iso_auto         = 19;
+  int32  exp_bias         = 20;
+  uint32 a3a_lock         = 21;
+}
+
+message CaptureParams {
+  uint32 width       = 1;
+  uint32 height      = 2;
+  uint32 format      = 3;
+  uint32 quality     = 4;
+  uint32 num_frames  = 5;
+  uint32 timeout_ms  = 6;
+  bool   burst_mode  = 7;
+}
+
+message FrameData {
+  uint32 width         = 1;
+  uint32 height        = 2;
+  uint32 stride        = 3;
+  uint32 format        = 4;
+  uint64 timestamp_ns  = 5;
+  uint32 frame_number  = 6;
+  uint32 gain          = 7;
+  uint32 exposure      = 8;
+  bytes  data          = 9;  // raw pixel data
+}
+
+message FrameInfo {
+  uint32 width        = 1;
+  uint32 height       = 2;
+  uint32 format       = 3;
+  uint64 size_bytes   = 4;
+  uint32 frame_number = 5;
+  uint64 timestamp_ns = 6;
+}
+
+message Profile {
+  string name           = 1;
+  uint32 mode_index     = 2;
+  uint32 gain           = 3;
+  uint32 digital_gain   = 4;
+  uint32 exposure       = 5;
+  int32  brightness     = 6;
+  int32  contrast       = 7;
+  int32  saturation     = 8;
+  int32  hue            = 9;
+  int32  sharpness      = 10;
+  int32  gamma          = 11;
+  uint32 wb_temperature = 12;
+  int32  hdr_mode       = 13;
+  int32  test_pattern   = 14;
+  bool   hflip          = 15;
+  bool   vflip          = 16;
+}
+
+message RegisterAccess {
+  uint32 reg = 1;
+  uint32 val = 2;
+}
+
+message StatusStreamEvent {
+  oneof event {
+    SensorStatus status_update     = 1;
+    FrameInfo    frame_captured    = 2;
+    string       error_message     = 3;
+    bool         streaming_state   = 4;
+  }
+}
+
+message CommandResponse {
+  bool   success = 1;
+  int32  error   = 2;
+  string message = 3;
+}
+
+// ---------------------------------------------------------------------------
+// Service
+// ---------------------------------------------------------------------------
+
+service Imx708Service {
+  // === Basic Control ===
+  rpc GetStatus(Empty) returns (SensorStatus);
+  rpc StartStream(Empty) returns (CommandResponse);
+  rpc StopStream(Empty) returns (CommandResponse);
+  rpc SoftReset(Empty) returns (CommandResponse);
+
+  // === Modes ===
+  rpc GetModes(Empty) returns (ModeList);
+  rpc SetMode(ModeInfo) returns (CommandResponse);
+
+  // === Gain / Exposure ===
+  rpc GetGain(Empty) returns (GainConfig);
+  rpc SetGain(GainConfig) returns (CommandResponse);
+  rpc GetExposure(Empty) returns (ExposureConfig);
+  rpc SetExposure(ExposureConfig) returns (CommandResponse);
+
+  // === HDR ===
+  rpc GetHdr(Empty) returns (HdrConfig);
+  rpc SetHdr(HdrConfig) returns (CommandResponse);
+
+  // === Test Pattern ===
+  rpc GetTestPattern(Empty) returns (TestPatternConfig);
+  rpc SetTestPattern(TestPatternConfig) returns (CommandResponse);
+
+  // === Image Processing ===
+  rpc GetImageProcessing(Empty) returns (ImageProcessingConfig);
+  rpc SetImageProcessing(ImageProcessingConfig) returns (CommandResponse);
+
+  // === Capture ===
+  rpc CaptureFrame(CaptureParams) returns (FrameData);
+  rpc CaptureFrames(CaptureParams) returns (stream FrameData);
+
+  // === Profiles ===
+  rpc SaveProfile(Profile) returns (CommandResponse);
+  rpc LoadProfile(Profile) returns (CommandResponse);
+  rpc ListProfiles(Empty) returns (stream Profile);
+
+  // === Register Access (debug) ===
+  rpc ReadRegister(RegisterAccess) returns (RegisterAccess);
+  rpc WriteRegister(RegisterAccess) returns (CommandResponse);
+
+  // === Streaming Telemetry ===
+  rpc StreamStatus(Empty) returns (stream StatusStreamEvent);
+  rpc StreamFrames(CaptureParams) returns (stream FrameData);
+}

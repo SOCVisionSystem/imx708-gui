@@ -1,0 +1,35 @@
+# SPDX-License-Identifier: GPL-2.0-only
+#
+# .gitignore — IMX708 GUI client
+#
+
+# ── Python ────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+*.egg
+dist/
+build/
+*.spec
+
+# ── Virtual environment ────────────────────────────────────────────────────
+.venv/
+venv/
+.env/
+
+# ── Generated gRPC stubs ──────────────────────────────────────────────────
+imx708_proto/
+
+# ── IDE / Editor ──────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ── OS files ──────────────────────────────────────────────────────────────
+*.log
+*.tmp

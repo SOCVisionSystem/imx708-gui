@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=IMX708 Camera
+Comment=Cross-platform desktop client for Sony IMX708 camera sensor
+Exec=/usr/local/bin/imx708-cam
+Icon=imx708-cam
+Terminal=false
+Categories=Graphics;Photography;Utility;
+Keywords=camera;sensor;IMX708;Raspberry Pi;
+StartupNotify=true
