@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: GPL-2.0-only
+#
+# IMX708 GUI — Python dependencies
+#
+# Managed with uv. Install:
+#   curl -LsSf https://astral.sh/uv/install.sh | sh
+#   uv sync
+#
+# Or with pip:
+#   pip install -r requirements.txt
+#
+
+PySide6>=6.5
+grpcio>=1.50
+grpcio-tools>=1.50

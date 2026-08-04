@@ -1,0 +1,60 @@
+# IMX708 GUI — Cross-Platform Client for Sony IMX708 Camera
+
+**PySide6 desktop application with macOS-like design for controlling the IMX708 sensor via gRPC.** Runs on macOS, Linux, and Windows.
+
+## Features
+
+- **macOS-like sidebar** with SVG icons
+- **Dashboard**: Real-time sensor status (temperature, PLL, streaming, frame count)
+- **Controls**: Analog/digital gain sliders, exposure slider, HDR mode
+- **Capture**: Frame capture with save to file
+- **Test Patterns**: 5 patterns with color component controls
+- **Registers**: Direct register read/write (debug)
+- **Info**: Sensor specs, mode table viewer
+- **gRPC streaming** for live status updates
+- **Cross-platform**: macOS, Linux, Windows
+- **Buildable executable**: PyInstaller support
+
+## Quick Start
+
+```bash
+# Install dependencies
+pip install -r requirements.txt
+
+# Generate gRPC stubs
+./build.sh
+
+# Run
+python3 imx708_client.py --server 192.168.1.100:50051
+
+# Build standalone executable
+./build.sh --exe
+```
+
+## Requirements
+
+- Python 3.8+
+- PySide6 >= 6.5
+- grpcio >= 1.50
+- grpcio-tools >= 1.50
+
+## Usage
+
+```
+python3 imx708_client.py --server <raspberry-pi-ip>:50051
+```
+
+## Screens
+
+| Screen | Description |
+|---|---|
+| Dashboard | Real-time sensor status cards, connect/stream/reset buttons |
+| Controls | Gain, exposure, HDR sliders |
+| Capture | Frame capture with format selection, save to file |
+| Test Patterns | 5 test patterns with color controls |
+| Registers | Known register quick-access, custom read/write |
+| Info | Sensor specs, driver features, mode table |
+
+## License
+
+GPL-2.0-only

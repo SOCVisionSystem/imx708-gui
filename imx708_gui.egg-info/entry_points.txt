@@ -1,0 +1,2 @@
+[console_scripts]
+imx708-cam = imx708_client:main

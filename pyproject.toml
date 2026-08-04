@@ -1,0 +1,26 @@
+[project]
+name = "imx708-gui"
+version = "0.1.0"
+description = "Cross-platform GUI client for Sony IMX708 camera sensor"
+authors = [
+    { name = "Sandesh", email = "sandesh@soccentric.com" },
+]
+license = { text = "GPL-2.0-only" }
+readme = "README.md"
+requires-python = ">=3.8"
+
+dependencies = [
+    "PySide6>=6.5",
+    "grpcio>=1.50",
+    "grpcio-tools>=1.50",
+]
+
+[project.scripts]
+imx708-cam = "imx708_client:main"
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["imx708_client*"]
