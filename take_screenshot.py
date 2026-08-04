@@ -8,12 +8,11 @@ import os
 import time
 import argparse
 
-# Add build dir to path for proto stubs
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'build'))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'imx708_proto'))
 
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QPixmap, QWindow
+from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import QApplication
 
 def main():
@@ -22,25 +21,23 @@ def main():
     parser.add_argument('--output', default='screenshot.png')
     args = parser.parse_args()
 
-    # Set server address before importing the client
-    os.environ['IMX708_SERVER'] = args.server
-
     app = QApplication(sys.argv)
+    app.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
 
-    # Import the main window AFTER QApplication is created
     from imx708_client import MainWindow
 
-    window = MainWindow()
+    window = MainWindow(args.server)
     window.show()
+    window.raise_()
+    window.activateWindow()
 
-    # Wait for the window to fully render
     def capture():
-        # Process events to ensure full render
         app.processEvents()
-        time.sleep(0.5)
+        time.sleep(0.3)
+        app.processEvents()
+        time.sleep(0.3)
         app.processEvents()
 
-        # Grab the window
         screen = app.primaryScreen()
         if screen:
             pixmap = screen.grabWindow(window.winId())
@@ -50,7 +47,7 @@ def main():
             print("ERROR: No primary screen found")
         app.quit()
 
-    QTimer.singleShot(2000, capture)
+    QTimer.singleShot(2500, capture)
     sys.exit(app.exec())
 
 if __name__ == '__main__':
