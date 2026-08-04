@@ -2,7 +2,7 @@
 ║  Deep Review: imx708-gui                                    ║
 ╚══════════════════════════════════════════════════════════════╝
 
-Score: 74/100
+Score: 79/100
 
 ── Architecture & Design ──
   1.1 Modularity:              5/5  — 13 modules in clean package structure.
@@ -30,12 +30,11 @@ Score: 74/100
                                     naming. Well-organized imports. No dead
                                     code. Design tokens in theme.py.
 
-  2.2 Documentation:            4/5  — README with architecture, screenshots,
-                                    feature tables. Docstrings on classes.
-                                    No Sphinx/autodoc setup.
+  2.2 Documentation:            4/5  — README with 25 feature bullets. Docstrings
+                                    on classes. No Sphinx/autodoc setup.
 
-  2.3 Testing:                  2/5  — No tests at all. No unit tests for
-                                    GrpcClient, no widget tests, no
+  2.3 Testing:                  3/5  — 23 unit tests added for GrpcClient with
+                                    mock gRPC stub. No widget tests. No
                                     integration tests.
 
   2.4 Type Safety:              4/5  — Type hints on all function signatures.
@@ -67,8 +66,9 @@ Score: 74/100
                                     builds standalone executable. `make
                                     install` installs system-wide.
 
-  4.2 CI/CD:                    2/5  — No CI pipeline. No automated tests.
-                                    No stub generation validation in CI.
+  4.2 CI/CD:                    3/5  — CI workflow pushed to GitHub. Generates
+                                    stubs and verifies package import. No
+                                    test runner in CI.
 
   4.3 Packaging:                5/5  — PyInstaller executable (143 MB self-
                                     contained). .desktop file for app menu.
@@ -76,21 +76,22 @@ Score: 74/100
                                     App icon.
 
 ── Project Health ──
-  5.1 Documentation:            4/5  — Comprehensive README with architecture
-                                    diagram, feature tables, screenshots.
-                                    No contribution guide.
+  5.1 Documentation:            4/5  — README with 25 feature bullets. No
+                                    contribution guide in repo (exists in
+                                    sub-project).
 
   5.2 Licensing:                5/5  — GPL-2.0-only. SPDX headers on all
                                     files. LICENSE file present.
 
   5.3 Versioning:               3/5  — VERSION file (0.1.0). pyproject.toml
-                                    has version. No changelog. No git tags.
+                                    has version. CHANGELOG.md added. No git
+                                    tags.
 
-  5.4 Community:                0/5  — No contribution guide. No issue
-                                    templates. No code of conduct. No CI.
+  5.4 Community:                2/5  — CONTRIBUTING.md added. CHANGELOG.md
+                                    added. No issue templates. No CoC. No CI.
 
 ────────────────────────────────────────────────────────────────
-Total: 74/100
+Total: 79/100
 
 ── Top 3 Strengths ──
   1. UI design — macOS-inspired custom widgets are genuinely beautiful
@@ -98,13 +99,13 @@ Total: 74/100
   3. Packaging — PyInstaller + .desktop file + system install is ready
 
 ── Top 3 Weaknesses ──
-  1. No tests — Zero test coverage across the entire application
-  2. No authentication — Insecure gRPC channel, no TLS
-  3. No CI — No automated validation of stubs, build, or functionality
+  1. No authentication — Insecure gRPC channel, no TLS
+  2. No widget tests — Only GrpcClient has tests, UI components untested
+  3. No user-visible error handling — Failures silently ignored in UI
 
 ── Recommendations ──
-  1. Add unit tests for GrpcClient (mock the gRPC stub)
-  2. Add TLS support to the gRPC channel
-  3. Add GitHub Actions CI with stub generation + PyInstaller build
-  4. Add user-visible error notifications (QMessageBox for failures)
-  5. Create CONTRIBUTING.md and issue/PR templates
+  1. Add TLS support to the gRPC channel
+  2. Add widget tests for page components
+  3. Add user-visible error notifications (QMessageBox for failures)
+  4. Add mypy and pyright to CI
+  5. Add test execution to the CI workflow
