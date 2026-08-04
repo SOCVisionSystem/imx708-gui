@@ -32,12 +32,13 @@ from dataclasses import dataclass, field
 try:
     from PySide6.QtCore import (
         Qt, QThread, Signal, QObject, QTimer, QSize, QByteArray,
-        QPropertyAnimation, QEasingCurve, QRect, QPoint, QMargins
+        QPropertyAnimation, QEasingCurve, QRect, QPoint, QMargins,
+        QMetaObject, Q_ARG, Slot
     )
     from PySide6.QtGui import (
         QAction, QColor, QFont, QIcon, QPainter, QPixmap,
         QPalette, QBrush, QLinearGradient, QFontDatabase,
-        QCursor, QPen, QPainterPath, QFontMetrics
+        QCursor, QPen, QPainterPath, QFontMetrics, QKeySequence
     )
     from PySide6.QtWidgets import (
         QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
@@ -46,7 +47,8 @@ try:
         QMenu, QFileDialog, QMessageBox, QCheckBox, QSpinBox,
         QDoubleSpinBox, QScrollArea, QFrame, QSplitter, QListWidget,
         QListWidgetItem, QStackedWidget, QToolButton, QSizePolicy,
-        QProgressBar, QLineEdit, QPlainTextEdit, QGraphicsDropShadowEffect
+        QProgressBar, QLineEdit, QPlainTextEdit, QGraphicsDropShadowEffect,
+        QDialog
     )
 except ImportError:
     print("PySide6 is required. Install with: pip install PySide6")
@@ -63,18 +65,22 @@ except ImportError:
 
 # Try to import proto modules
 try:
-    sys.path.insert(
-        0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                        'imx708_proto'))
-    sys.path.insert(
-        0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                        'build'))
+    # For PyInstaller bundled executable
+    if getattr(sys, 'frozen', False):
+        base_path = sys._MEIPASS
+    else:
+        base_path = os.path.dirname(os.path.abspath(__file__))
+    
+    sys.path.insert(0, os.path.join(base_path, 'imx708_proto'))
+    sys.path.insert(0, os.path.join(base_path, 'build'))
+    sys.path.insert(0, base_path)
+    
     import imx708_pb2
     import imx708_pb2_grpc
     HAVE_PROTO = True
-except ImportError:
+except ImportError as e:
     HAVE_PROTO = False
-    print("Proto modules not found. Generate with: ./build.sh")
+    print(f"Proto modules not found: {e}. Generate with: ./build.sh")
 
 
 # =========================================================================
@@ -223,12 +229,9 @@ def make_icon(svg: str, size: int = 22, color: str = "#555") -> QIcon:
     painter = QPainter(pixmap)
     painter.setRenderHint(QPainter.SmoothPixmapTransform)
     painter.setRenderHint(QPainter.Antialiasing)
-    try:
-        from PySide6.QtSvg import QSvgRenderer
-        renderer = QSvgRenderer(QByteArray(colored.encode()))
-        renderer.render(painter)
-    except ImportError:
-        pass
+    from PySide6.QtSvg import QSvgRenderer
+    renderer = QSvgRenderer(QByteArray(colored.encode()))
+    renderer.render(painter)
     painter.end()
     return QIcon(pixmap.scaled(size, size, Qt.KeepAspectRatio, Qt.SmoothTransformation))
 
@@ -442,13 +445,13 @@ class SidebarWidget(QWidget):
     page_changed = Signal(int)
 
     NAV_ITEMS = [
-        ("Dashboard", ICON_CAMERA),
-        ("Controls",   ICON_SLIDERS),
-        ("Capture",    ICON_CAPTURE),
-        ("Image",      ICON_PALETTE),
-        ("Patterns",   ICON_GRID),
-        ("Registers",  ICON_TERMINAL),
-        ("Info",       ICON_INFO),
+        ("Dashboard", ICON_CAMERA, "Real-time sensor telemetry and controls"),
+        ("Controls",   ICON_SLIDERS, "Gain, exposure, and HDR settings"),
+        ("Capture",    ICON_CAPTURE, "Frame capture and save to file"),
+        ("Image",      ICON_PALETTE, "Brightness, contrast, white balance, flip"),
+        ("Patterns",   ICON_GRID, "Test pattern generator"),
+        ("Registers",  ICON_TERMINAL, "Direct register read/write (debug)"),
+        ("Info",       ICON_INFO, "Sensor specifications and about"),
     ]
 
     def __init__(self, parent=None):
@@ -494,8 +497,9 @@ class SidebarWidget(QWidget):
 
         # Navigation buttons
         self.buttons = []
-        for text, icon_svg in self.NAV_ITEMS:
+        for text, icon_svg, tooltip in self.NAV_ITEMS:
             btn = SidebarButton(text, icon_svg)
+            btn.setToolTip(tooltip)
             btn.clicked.connect(
                 lambda checked, b=btn, i=len(self.buttons): self._on_click(b, i))
             layout.addWidget(btn)
@@ -516,12 +520,12 @@ class SidebarWidget(QWidget):
         status_layout.setSpacing(8)
 
         self.status_dot = QLabel("●")
-        self.status_dot.setStyleSheet(f"color: {MACOS_RED}; font-size: 10px;")
+        self.status_dot.setStyleSheet(f"color: {MACOS_RED}; font-size: 12px;")
         status_layout.addWidget(self.status_dot)
 
         self.status_text = QLabel("Disconnected")
         self.status_text.setStyleSheet(f"""
-            font-size: 11px; font-weight: 500; color: {MACOS_SECONDARY};
+            font-size: 12px; font-weight: 500; color: {MACOS_SECONDARY};
         """)
         status_layout.addWidget(self.status_text)
         status_layout.addStretch()
@@ -539,16 +543,16 @@ class SidebarWidget(QWidget):
 
     def set_connected(self, connected: bool):
         if connected:
-            self.status_dot.setStyleSheet(f"color: {MACOS_GREEN}; font-size: 10px;")
+            self.status_dot.setStyleSheet(f"color: {MACOS_GREEN}; font-size: 12px;")
             self.status_text.setText("Connected")
             self.status_text.setStyleSheet(f"""
-                font-size: 11px; font-weight: 500; color: {MACOS_GREEN};
+                font-size: 12px; font-weight: 500; color: {MACOS_GREEN};
             """)
         else:
-            self.status_dot.setStyleSheet(f"color: {MACOS_RED}; font-size: 10px;")
+            self.status_dot.setStyleSheet(f"color: {MACOS_RED}; font-size: 12px;")
             self.status_text.setText("Disconnected")
             self.status_text.setStyleSheet(f"""
-                font-size: 11px; font-weight: 500; color: {MACOS_SECONDARY};
+                font-size: 12px; font-weight: 500; color: {MACOS_SECONDARY};
             """)
 
 
@@ -577,7 +581,7 @@ def make_card(title: str, value: str, color: str, icon_svg: str = None) -> QFram
         layout.addWidget(icon_lbl)
 
     title_lbl = QLabel(title)
-    title_lbl.setStyleSheet(f"color: {MACOS_SECONDARY}; font-size: 11px; font-weight: 500;")
+    title_lbl.setStyleSheet(f"color: {MACOS_SECONDARY}; font-size: 12px; font-weight: 500;")
     layout.addWidget(title_lbl)
 
     val_lbl = QLabel(value)
@@ -594,7 +598,7 @@ def make_group_box(title: str) -> QGroupBox:
     gb = QGroupBox(title)
     gb.setStyleSheet(f"""
         QGroupBox {{
-            font-size: 13px; font-weight: 600; color: {MACOS_TEXT};
+            font-size: 16px; font-weight: 600; color: {MACOS_TEXT};
             border: 1px solid {MACOS_BORDER}; border-radius: 10px;
             margin-top: 14px; padding: 18px 14px 14px 14px;
             background: white;
@@ -617,12 +621,17 @@ def make_primary_button(text: str, icon_svg: str = None) -> QPushButton:
             padding: 8px 18px; border-radius: 8px;
             border: none; background: {MACOS_BLUE};
             color: white; font-size: 13px; font-weight: 500;
+            min-height: 32px;
         }}
         QPushButton:hover {{
             background: #0066CC;
         }}
         QPushButton:pressed {{
             background: #0055B3;
+        }}
+        QPushButton:focus {{
+            outline: 2px solid #66B2FF;
+            outline-offset: 2px;
         }}
         QPushButton:disabled {{
             background: #B0B0B0; color: #E0E0E0;
@@ -641,12 +650,17 @@ def make_secondary_button(text: str, icon_svg: str = None) -> QPushButton:
             padding: 8px 18px; border-radius: 8px;
             border: 1px solid {MACOS_BORDER}; background: white;
             color: {MACOS_TEXT}; font-size: 13px; font-weight: 500;
+            min-height: 32px;
         }}
         QPushButton:hover {{
             background: {MACOS_BG};
         }}
         QPushButton:pressed {{
             background: {MACOS_SEPARATOR};
+        }}
+        QPushButton:focus {{
+            border-color: {MACOS_BLUE};
+            outline: 2px solid #66B2FF;
         }}
         QPushButton:disabled {{
             background: {MACOS_BG}; color: {MACOS_TERTIARY};
@@ -984,25 +998,31 @@ class DashboardPage(QWidget):
 
     def setup_ui(self):
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(28, 28, 28, 28)
-        layout.setSpacing(20)
+        layout.setContentsMargins(24, 24, 24, 24)
+        layout.setSpacing(16)
 
         layout.addWidget(make_header("Sensor Dashboard"))
 
         # Status cards row
         cards_layout = QHBoxLayout()
         cards_layout.setSpacing(12)
+        cards_layout.setContentsMargins(0, 0, 0, 0)
 
         self.status_cards = {}
         card_data = [
-            ("temperature", "Temperature", "0°C", MACOS_ORANGE, ICON_TERMINAL),
-            ("streaming", "Streaming", "Stopped", MACOS_RED, ICON_PLAY),
-            ("pll", "PLL Lock", "Unlocked", MACOS_RED, ICON_WIFI),
-            ("frames", "Frames", "0", MACOS_BLUE, ICON_CAPTURE),
+            ("temperature", "Temperature", "0°C", MACOS_ORANGE, ICON_TERMINAL,
+             "Current sensor temperature in degrees Celsius"),
+            ("streaming", "Streaming", "Stopped", MACOS_RED, ICON_PLAY,
+             "Whether the sensor is actively streaming frames"),
+            ("pll", "PLL Lock", "Unlocked", MACOS_RED, ICON_WIFI,
+             "Phase-Locked Loop lock status — must be locked for operation"),
+            ("frames", "Frames", "0", MACOS_BLUE, ICON_CAPTURE,
+             "Total frame count since stream started"),
         ]
 
-        for key, title, value, color, icon in card_data:
+        for key, title, value, color, icon, tooltip in card_data:
             card = make_card(title, value, color, icon)
+            card.setToolTip(tooltip)
             cards_layout.addWidget(card)
             self.status_cards[key] = card
 
@@ -1020,41 +1040,74 @@ class DashboardPage(QWidget):
         self.res_label = QLabel("—")
         self.fps_label = QLabel("—")
 
-        for label, widget in [
-            ("Analog Gain", self.gain_label),
-            ("Digital Gain", self.dgain_label),
-            ("Exposure", self.exposure_label),
-            ("Resolution", self.res_label),
-            ("Frame Rate", self.fps_label),
+        for label, widget, tooltip in [
+            ("Analog Gain", self.gain_label, "Current analog gain value (0–960)"),
+            ("Digital Gain", self.dgain_label, "Current digital gain value (256–65535)"),
+            ("Exposure", self.exposure_label, "Current exposure in line units"),
+            ("Resolution", self.res_label, "Current sensor resolution in pixels"),
+            ("Frame Rate", self.fps_label, "Current frames per second"),
         ]:
             lbl = QLabel(label)
             lbl.setStyleSheet(f"color: {MACOS_SECONDARY}; font-size: 12px; font-weight: 500;")
+            lbl.setToolTip(tooltip)
             widget.setStyleSheet(f"color: {MACOS_TEXT}; font-size: 13px; font-weight: 600;")
             settings_layout.addRow(lbl, widget)
 
         layout.addWidget(settings_group)
 
-        # Control buttons
-        btn_layout = QHBoxLayout()
-        btn_layout.setSpacing(10)
+        # Top Action Bar (macOS-style)
+        action_bar = QFrame()
+        action_bar.setStyleSheet(f"""
+            QFrame {{
+                background: white; border-radius: 10px;
+                border: 1px solid {MACOS_BORDER};
+            }}
+        """)
+        action_bar.setFixedHeight(56)
+        action_layout = QHBoxLayout(action_bar)
+        action_layout.setContentsMargins(12, 8, 12, 8)
+        action_layout.setSpacing(8)
 
         self.connect_btn = make_primary_button("  Connect", ICON_CONNECT)
+        self.connect_btn.setToolTip("Connect or disconnect from the gRPC server")
+        self.connect_btn.setFixedHeight(40)
         self.connect_btn.clicked.connect(self.toggle_connect)
 
         self.stream_btn = make_secondary_button("  Start Stream", ICON_PLAY)
+        self.stream_btn.setToolTip("Start or stop the video stream from the sensor")
+        self.stream_btn.setFixedHeight(40)
         self.stream_btn.clicked.connect(self._toggle_stream)
         self.stream_btn.setEnabled(False)
 
         self.reset_btn = make_secondary_button("  Soft Reset", ICON_RESET)
+        self.reset_btn.setToolTip("Perform a soft reset of the sensor (stops stream)")
+        self.reset_btn.setFixedHeight(40)
         self.reset_btn.clicked.connect(self._soft_reset)
         self.reset_btn.setEnabled(False)
 
-        btn_layout.addWidget(self.connect_btn)
-        btn_layout.addWidget(self.stream_btn)
-        btn_layout.addWidget(self.reset_btn)
-        btn_layout.addStretch()
+        # Loading indicator
+        self.loading_bar = QProgressBar()
+        self.loading_bar.setRange(0, 0)  # Indeterminate
+        self.loading_bar.setFixedSize(120, 4)
+        self.loading_bar.setTextVisible(False)
+        self.loading_bar.setStyleSheet(f"""
+            QProgressBar {{
+                border: none; border-radius: 2px;
+                background: {MACOS_SEPARATOR};
+            }}
+            QProgressBar::chunk {{
+                background: {MACOS_BLUE}; border-radius: 2px;
+            }}
+        """)
+        self.loading_bar.hide()
 
-        layout.addLayout(btn_layout)
+        action_layout.addWidget(self.connect_btn)
+        action_layout.addWidget(self.stream_btn)
+        action_layout.addWidget(self.reset_btn)
+        action_layout.addWidget(self.loading_bar)
+        action_layout.addStretch()
+
+        layout.addWidget(action_bar)
         layout.addStretch()
 
     def _update_status(self, status: Dict):
@@ -1093,13 +1146,35 @@ class DashboardPage(QWidget):
             self.connect_btn.setIcon(make_icon(ICON_CONNECT, 16, "#FFFFFF"))
             self.stream_btn.setEnabled(False)
             self.reset_btn.setEnabled(False)
+            self.loading_bar.hide()
         else:
-            if self.client.connect():
-                self.connect_btn.setText("  Disconnect")
-                self.connect_btn.setIcon(make_icon(ICON_STOP, 16, "#FFFFFF"))
-                self.stream_btn.setEnabled(True)
-                self.reset_btn.setEnabled(True)
-                self.client.start_status_stream()
+            self.connect_btn.setEnabled(False)
+            self.loading_bar.show()
+            self.client.log_message.emit("Connecting...")
+            QApplication.processEvents()
+
+            # Run connection in background to keep UI responsive
+            import threading
+            def _do_connect():
+                success = self.client.connect()
+                QMetaObject.invokeMethod(
+                    self, "_on_connect_finished", Qt.QueuedConnection,
+                    Q_ARG(bool, success)
+                )
+            threading.Thread(target=_do_connect, daemon=True).start()
+
+    @Slot(bool)
+    def _on_connect_finished(self, success: bool):
+        self.loading_bar.hide()
+        self.connect_btn.setEnabled(True)
+        if success:
+            self.connect_btn.setText("  Disconnect")
+            self.connect_btn.setIcon(make_icon(ICON_STOP, 16, "#FFFFFF"))
+            self.stream_btn.setEnabled(True)
+            self.reset_btn.setEnabled(True)
+            self.client.start_status_stream()
+        else:
+            self.client.log_message.emit("Connection failed")
 
     def _toggle_stream(self):
         if self.client.connected:
@@ -1114,7 +1189,16 @@ class DashboardPage(QWidget):
                 self.stream_btn.setIcon(make_icon(ICON_STOP, 16, MACOS_RED))
 
     def _soft_reset(self):
-        if self.client.connected:
+        if not self.client.connected:
+            return
+        reply = QMessageBox.question(
+            self, "Soft Reset",
+            "Are you sure you want to soft-reset the sensor?\n\n"
+            "This will stop any active stream and reset all settings.",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+        if reply == QMessageBox.Yes:
             self.client.soft_reset()
 
 
@@ -1132,8 +1216,8 @@ class ControlsPage(QWidget):
 
     def setup_ui(self):
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(28, 28, 28, 28)
-        layout.setSpacing(20)
+        layout.setContentsMargins(24, 24, 24, 24)
+        layout.setSpacing(16)
 
         layout.addWidget(make_header("Sensor Controls"))
         layout.addWidget(make_description("Adjust gain, exposure, and HDR settings for the IMX708 sensor."))
@@ -1149,10 +1233,11 @@ class ControlsPage(QWidget):
         self.gain_slider.setRange(0, 960)
         self.gain_slider.setValue(0)
         self.gain_slider.setAccentColor(MACOS_BLUE)
+        self.gain_slider.setToolTip("Analog gain: 0–960 (higher = brighter)")
 
         gain_val_layout = QHBoxLayout()
         self.gain_value = QLabel("0")
-        self.gain_value.setStyleSheet(f"color: {MACOS_BLUE}; font-size: 15px; font-weight: 700;")
+        self.gain_value.setStyleSheet(f"color: {MACOS_BLUE}; font-size: 14px; font-weight: 700;")
         self.gain_value.setFixedWidth(50)
         gain_val_layout.addWidget(self.gain_slider)
         gain_val_layout.addWidget(self.gain_value)
@@ -1165,10 +1250,11 @@ class ControlsPage(QWidget):
         self.dgain_slider.setRange(0x100, 0xFFFF)
         self.dgain_slider.setValue(0x100)
         self.dgain_slider.setAccentColor(MACOS_PURPLE)
+        self.dgain_slider.setToolTip("Digital gain: 256–65535 (higher = brighter)")
 
         dgain_val_layout = QHBoxLayout()
         self.dgain_value = QLabel("256")
-        self.dgain_value.setStyleSheet(f"color: {MACOS_PURPLE}; font-size: 15px; font-weight: 700;")
+        self.dgain_value.setStyleSheet(f"color: {MACOS_PURPLE}; font-size: 14px; font-weight: 700;")
         self.dgain_value.setFixedWidth(50)
         dgain_val_layout.addWidget(self.dgain_slider)
         dgain_val_layout.addWidget(self.dgain_value)
@@ -1177,6 +1263,7 @@ class ControlsPage(QWidget):
         gain_layout.addRow(QLabel("Digital Gain"), dgain_val_layout)
 
         apply_gain = make_primary_button("Apply Gain", ICON_CHECK)
+        apply_gain.setToolTip("Send the current gain values to the sensor")
         apply_gain.clicked.connect(self._apply_gain)
         gain_layout.addRow("", apply_gain)
 
@@ -1192,10 +1279,11 @@ class ControlsPage(QWidget):
         self.exp_slider.setRange(8, 0xFFFF)
         self.exp_slider.setValue(0x640)
         self.exp_slider.setAccentColor(MACOS_ORANGE)
+        self.exp_slider.setToolTip("Exposure: 8–65535 line units (higher = longer exposure)")
 
         exp_val_layout = QHBoxLayout()
         self.exp_value = QLabel("1600")
-        self.exp_value.setStyleSheet(f"color: {MACOS_ORANGE}; font-size: 15px; font-weight: 700;")
+        self.exp_value.setStyleSheet(f"color: {MACOS_ORANGE}; font-size: 14px; font-weight: 700;")
         self.exp_value.setFixedWidth(50)
         exp_val_layout.addWidget(self.exp_slider)
         exp_val_layout.addWidget(self.exp_value)
@@ -1204,6 +1292,7 @@ class ControlsPage(QWidget):
         exp_layout.addRow(QLabel("Exposure"), exp_val_layout)
 
         apply_exp = make_primary_button("Apply Exposure", ICON_CHECK)
+        apply_exp.setToolTip("Send the current exposure value to the sensor")
         apply_exp.clicked.connect(self._apply_exposure)
         exp_layout.addRow("", apply_exp)
 
@@ -1217,6 +1306,7 @@ class ControlsPage(QWidget):
 
         self.hdr_combo = QComboBox()
         self.hdr_combo.addItems(["Off", "On"])
+        self.hdr_combo.setToolTip("Enable or disable High Dynamic Range mode")
         self.hdr_combo.setStyleSheet(f"""
             QComboBox {{
                 padding: 6px 12px; border: 1px solid {MACOS_BORDER};
@@ -1238,6 +1328,7 @@ class ControlsPage(QWidget):
         hdr_layout.addRow(QLabel("HDR Mode"), self.hdr_combo)
 
         apply_hdr = make_primary_button("Apply HDR", ICON_CHECK)
+        apply_hdr.setToolTip("Send the HDR mode selection to the sensor")
         apply_hdr.clicked.connect(self._apply_hdr)
         hdr_layout.addRow("", apply_hdr)
 
@@ -1271,8 +1362,8 @@ class CapturePage(QWidget):
 
     def setup_ui(self):
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(28, 28, 28, 28)
-        layout.setSpacing(20)
+        layout.setContentsMargins(24, 24, 24, 24)
+        layout.setSpacing(16)
 
         layout.addWidget(make_header("Frame Capture"))
         layout.addWidget(make_description("Capture single frames or bursts from the sensor."))
@@ -1286,6 +1377,7 @@ class CapturePage(QWidget):
         self.cap_count = QSpinBox()
         self.cap_count.setRange(1, 100)
         self.cap_count.setValue(1)
+        self.cap_count.setToolTip("Number of frames to capture in a single burst")
         self.cap_count.setStyleSheet(f"""
             QSpinBox {{
                 padding: 6px 12px; border: 1px solid {MACOS_BORDER};
@@ -1293,6 +1385,7 @@ class CapturePage(QWidget):
                 min-width: 80px;
             }}
             QSpinBox:hover {{ border-color: {MACOS_BLUE}; }}
+            QSpinBox:focus {{ border-color: {MACOS_BLUE}; background: #F0F5FF; }}
             QSpinBox::up-button, QSpinBox::down-button {{
                 border: none; width: 20px;
             }}
@@ -1301,6 +1394,7 @@ class CapturePage(QWidget):
 
         self.cap_format = QComboBox()
         self.cap_format.addItems(["RAW10", "PGM"])
+        self.cap_format.setToolTip("Output format for captured frames")
         self.cap_format.setStyleSheet(self.hdr_combo.styleSheet() if hasattr(self, 'hdr_combo') else f"""
             QComboBox {{
                 padding: 6px 12px; border: 1px solid {MACOS_BORDER};
@@ -1318,8 +1412,25 @@ class CapturePage(QWidget):
         self.save_btn.clicked.connect(self._save)
         self.save_btn.setEnabled(False)
 
+        # Capture loading indicator
+        self.capture_loading = QProgressBar()
+        self.capture_loading.setRange(0, 0)  # Indeterminate
+        self.capture_loading.setFixedSize(120, 4)
+        self.capture_loading.setTextVisible(False)
+        self.capture_loading.setStyleSheet(f"""
+            QProgressBar {{
+                border: none; border-radius: 2px;
+                background: {MACOS_SEPARATOR};
+            }}
+            QProgressBar::chunk {{
+                background: {MACOS_BLUE}; border-radius: 2px;
+            }}
+        """)
+        self.capture_loading.hide()
+
         btn_row.addWidget(self.capture_btn)
         btn_row.addWidget(self.save_btn)
+        btn_row.addWidget(self.capture_loading)
         btn_row.addStretch()
         cap_layout.addRow("", btn_row)
 
@@ -1346,6 +1457,10 @@ class CapturePage(QWidget):
     def _capture(self):
         if not self.client.connected:
             return
+        self.capture_btn.setEnabled(False)
+        self.capture_loading.show()
+        QApplication.processEvents()
+
         count = self.cap_count.value()
         frames = []
         for i in range(count):
@@ -1353,6 +1468,9 @@ class CapturePage(QWidget):
             if frame:
                 frames.append(frame)
                 self._last_frame = frame
+
+        self.capture_loading.hide()
+        self.capture_btn.setEnabled(True)
 
         if frames:
             self.frame_info.setText(
@@ -1400,8 +1518,8 @@ class ImagePage(QWidget):
 
     def setup_ui(self):
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(28, 28, 28, 28)
-        layout.setSpacing(20)
+        layout.setContentsMargins(24, 24, 24, 24)
+        layout.setSpacing(16)
 
         layout.addWidget(make_header("Image Processing"))
         layout.addWidget(make_description("Adjust brightness, contrast, white balance, and more."))
@@ -1415,6 +1533,7 @@ class ImagePage(QWidget):
         for name, label, lo, hi in self.SLIDERS:
             spin = QSpinBox()
             spin.setRange(lo, hi)
+            spin.setToolTip(f"{label}: range {lo} to {hi}")
             spin.setStyleSheet(f"""
                 QSpinBox {{
                     padding: 4px 8px; border: 1px solid {MACOS_BORDER};
@@ -1422,6 +1541,7 @@ class ImagePage(QWidget):
                     min-width: 70px;
                 }}
                 QSpinBox:hover {{ border-color: {MACOS_BLUE}; }}
+                QSpinBox:focus {{ border-color: {MACOS_BLUE}; background: #F0F5FF; }}
             """)
             self.spins[name] = spin
             adj_layout.addRow(QLabel(label), spin)
@@ -1436,6 +1556,7 @@ class ImagePage(QWidget):
 
         self.auto_wb_check = QCheckBox("Automatic white balance")
         self.auto_wb_check.setChecked(True)
+        self.auto_wb_check.setToolTip("Automatically adjust white balance based on scene lighting")
         self.auto_wb_check.setStyleSheet(f"""
             QCheckBox {{
                 font-size: 13px; color: {MACOS_TEXT};
@@ -1457,18 +1578,23 @@ class ImagePage(QWidget):
         self.wb_spin.setValue(6500)
         self.wb_spin.setSuffix(" K")
         self.wb_spin.setEnabled(False)
+        self.wb_spin.setToolTip("White balance color temperature in Kelvin (2800K–10000K)")
         self.wb_spin.setStyleSheet(f"""
             QSpinBox {{
                 padding: 4px 8px; border: 1px solid {MACOS_BORDER};
                 border-radius: 6px; background: white; font-size: 12px;
                 min-width: 90px;
             }}
+            QSpinBox:hover {{ border-color: {MACOS_BLUE}; }}
+            QSpinBox:focus {{ border-color: {MACOS_BLUE}; background: #F0F5FF; }}
         """)
         wb_layout.addRow(QLabel("Temperature"), self.wb_spin)
 
         self.hflip_check = QCheckBox("Horizontal flip")
+        self.hflip_check.setToolTip("Mirror the image horizontally")
         self.hflip_check.setStyleSheet(self.auto_wb_check.styleSheet())
         self.vflip_check = QCheckBox("Vertical flip")
+        self.vflip_check.setToolTip("Mirror the image vertically")
         self.vflip_check.setStyleSheet(self.auto_wb_check.styleSheet())
         wb_layout.addRow(self.hflip_check)
         wb_layout.addRow(self.vflip_check)
@@ -1479,8 +1605,10 @@ class ImagePage(QWidget):
         btn_row = QHBoxLayout()
         btn_row.setSpacing(10)
         refresh_btn = make_secondary_button("  Refresh", ICON_REFRESH)
+        refresh_btn.setToolTip("Refresh current image processing settings from the sensor")
         refresh_btn.clicked.connect(self.refresh)
         apply_btn = make_primary_button("  Apply", ICON_CHECK)
+        apply_btn.setToolTip("Apply all image processing settings to the sensor")
         apply_btn.clicked.connect(self._apply)
         btn_row.addWidget(refresh_btn)
         btn_row.addWidget(apply_btn)
@@ -1534,8 +1662,8 @@ class TestPatternPage(QWidget):
 
     def setup_ui(self):
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(28, 28, 28, 28)
-        layout.setSpacing(20)
+        layout.setContentsMargins(24, 24, 24, 24)
+        layout.setSpacing(16)
 
         layout.addWidget(make_header("Test Patterns"))
         layout.addWidget(make_description("Select a test pattern to verify sensor output and signal integrity."))
@@ -1559,6 +1687,7 @@ class TestPatternPage(QWidget):
             btn.setCheckable(True)
             btn.setFixedSize(170, 64)
             btn.setCursor(QCursor(Qt.PointingHandCursor))
+            btn.setToolTip(f"Set test pattern to '{name}'")
             btn.setStyleSheet(f"""
                 QPushButton {{
                     border: 1px solid {MACOS_BORDER}; border-radius: 10px;
@@ -1589,18 +1718,22 @@ class TestPatternPage(QWidget):
         self.color_r = QSpinBox()
         self.color_r.setRange(0, 0xFFF)
         self.color_r.setValue(0xFFF)
+        self.color_r.setToolTip("Red channel value for solid color pattern (0–4095)")
         self.color_r.setStyleSheet(f"""
-            QSpinBox {{
-                padding: 4px 8px; border: 1px solid {MACOS_BORDER};
-                border-radius: 6px; background: white; font-size: 12px;
-                min-width: 80px;
-            }}
-        """)
+                QSpinBox {{
+                    padding: 4px 8px; border: 1px solid {MACOS_BORDER};
+                    border-radius: 6px; background: white; font-size: 12px;
+                    min-width: 80px;
+                }}
+                QSpinBox:hover {{ border-color: {MACOS_BLUE}; }}
+                QSpinBox:focus {{ border-color: {MACOS_BLUE}; background: #F0F5FF; }}
+            """)
         color_layout.addRow(QLabel("Red"), self.color_r)
 
         self.color_b = QSpinBox()
         self.color_b.setRange(0, 0xFFF)
         self.color_b.setValue(0xFFF)
+        self.color_b.setToolTip("Blue channel value for solid color pattern (0–4095)")
         self.color_b.setStyleSheet(self.color_r.styleSheet())
         color_layout.addRow(QLabel("Blue"), self.color_b)
 
@@ -1630,8 +1763,8 @@ class RegisterPage(QWidget):
 
     def setup_ui(self):
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(28, 28, 28, 28)
-        layout.setSpacing(20)
+        layout.setContentsMargins(24, 24, 24, 24)
+        layout.setSpacing(16)
 
         layout.addWidget(make_header("Register Access"))
         layout.addWidget(make_description("Read and write sensor registers directly. Requires root on the server."))
@@ -1652,10 +1785,11 @@ class RegisterPage(QWidget):
         for i, (name, addr) in enumerate(known_regs):
             btn = QPushButton(f"0x{addr:04X}  {name}")
             btn.setCursor(QCursor(Qt.PointingHandCursor))
+            btn.setToolTip(f"Read register 0x{addr:04X} ({name})")
             btn.setStyleSheet(f"""
                 QPushButton {{
                     border: 1px solid {MACOS_BORDER}; border-radius: 8px;
-                    padding: 8px 14px; font-size: 11px; font-weight: 500;
+                    padding: 8px 14px; font-size: 12px; font-weight: 500;
                     color: {MACOS_TEXT}; background: white; text-align: left;
                 }}
                 QPushButton:hover {{
@@ -1684,7 +1818,10 @@ class RegisterPage(QWidget):
                 padding: 8px 12px; font-size: 13px; font-family: monospace;
                 background: white; min-width: 100px;
             }}
-            QLineEdit:focus {{ border-color: {MACOS_BLUE}; }}
+            QLineEdit:focus {{
+                border-color: {MACOS_BLUE};
+                background: #F0F5FF;
+            }}
         """)
         addr_val_layout.addWidget(self.reg_addr)
 
@@ -1697,10 +1834,12 @@ class RegisterPage(QWidget):
         btn_layout = QHBoxLayout()
         btn_layout.setSpacing(10)
         read_btn = make_primary_button("  Read", ICON_DOWNLOAD)
+        read_btn.setToolTip("Read the value at the specified register address")
         read_btn.clicked.connect(self._read_custom)
 
         write_btn = QPushButton("  Write")
         write_btn.setIcon(make_icon(ICON_CHECK, 16, "#FFFFFF"))
+        write_btn.setToolTip("Write the specified value to the register address")
         write_btn.setStyleSheet(f"""
             QPushButton {{
                 padding: 8px 18px; border-radius: 8px;
@@ -1771,8 +1910,8 @@ class InfoPage(QWidget):
 
     def setup_ui(self):
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(28, 28, 28, 28)
-        layout.setSpacing(20)
+        layout.setContentsMargins(24, 24, 24, 24)
+        layout.setSpacing(16)
 
         layout.addWidget(make_header("About IMX708"))
 
@@ -1814,7 +1953,7 @@ class InfoPage(QWidget):
         <li>Configuration profiles</li>
         <li>Fault injection and debugfs</li>
         </ul>
-        <p style="color: {MACOS_TERTIARY}; font-size: 11px; margin-top: 16px;">
+        <p style="color: {MACOS_TERTIARY}; font-size: 12px; margin-top: 16px;">
         <i>Version 0.1.0 — GPL-2.0-only</i>
         </p>
         """)
@@ -1834,6 +1973,7 @@ class InfoPage(QWidget):
         layout.addWidget(self.modes_table)
 
         refresh_btn = make_primary_button("  Refresh Modes", ICON_REFRESH)
+        refresh_btn.setToolTip("Fetch the latest list of supported sensor modes from the server")
         refresh_btn.clicked.connect(self._refresh_modes)
         layout.addWidget(refresh_btn)
 
@@ -1852,14 +1992,460 @@ class InfoPage(QWidget):
 
 
 # =========================================================================
+# Server Configuration Manager
+# =========================================================================
+
+CONFIG_DIR = Path.home() / ".config" / "imx708-gui"
+CONFIG_FILE = CONFIG_DIR / "servers.json"
+
+def ensure_config_dir():
+    """Ensure config directory exists."""
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+
+def load_servers() -> List[Dict]:
+    """Load saved server configurations."""
+    ensure_config_dir()
+    if CONFIG_FILE.exists():
+        try:
+            with open(CONFIG_FILE, 'r') as f:
+                data = json.load(f)
+                return data.get('servers', [])
+        except Exception:
+            pass
+    return []
+
+def save_servers(servers: List[Dict]):
+    """Save server configurations."""
+    ensure_config_dir()
+    try:
+        with open(CONFIG_FILE, 'w') as f:
+            json.dump({'servers': servers}, f, indent=2)
+    except Exception as e:
+        print(f"Failed to save servers: {e}")
+
+def get_last_server() -> str:
+    """Get last used server address."""
+    ensure_config_dir()
+    if CONFIG_FILE.exists():
+        try:
+            with open(CONFIG_FILE, 'r') as f:
+                data = json.load(f)
+                return data.get('last_server', 'localhost:50051')
+        except Exception:
+            pass
+    return 'localhost:50051'
+
+def set_last_server(addr: str):
+    """Set last used server address."""
+    ensure_config_dir()
+    try:
+        data = {'servers': load_servers(), 'last_server': addr}
+        with open(CONFIG_FILE, 'w') as f:
+            json.dump(data, f, indent=2)
+    except Exception as e:
+        print(f"Failed to save last server: {e}")
+
+
+# =========================================================================
+# Connection Dialog
+# =========================================================================
+
+class ConnectionDialog(QDialog):
+    """macOS-style dialog for managing server connections."""
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Server Connections")
+        self.setModal(True)
+        self.setFixedSize(520, 480)
+        self.setStyleSheet(f"""
+            QDialog {{
+                background: {MACOS_BG};
+            }}
+        """)
+        
+        self.servers = load_servers()
+        self.setup_ui()
+        self.refresh_list()
+
+    def setup_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(16)
+
+        # Header
+        header = QLabel("Server Connections")
+        header.setStyleSheet(f"""
+            font-size: 20px; font-weight: 700; color: {MACOS_TEXT};
+        """)
+        layout.addWidget(header)
+
+        desc = QLabel("Manage gRPC server connections for IMX708 cameras.")
+        desc.setStyleSheet(f"color: {MACOS_SECONDARY}; font-size: 13px;")
+        desc.setWordWrap(True)
+        layout.addWidget(desc)
+
+        # Server list
+        self.list_widget = QListWidget()
+        self.list_widget.setStyleSheet(f"""
+            QListWidget {{
+                border: 1px solid {MACOS_BORDER}; border-radius: 10px;
+                background: white; padding: 8px;
+                font-size: 13px;
+            }}
+            QListWidget::item {{
+                padding: 10px 12px; border-radius: 6px;
+                margin: 2px;
+            }}
+            QListWidget::item:selected {{
+                background: {MACOS_BLUE}; color: white;
+            }}
+            QListWidget::item:hover {{
+                background: {MACOS_SEPARATOR};
+            }}
+        """)
+        self.list_widget.itemSelectionChanged.connect(self._on_selection_changed)
+        self.list_widget.itemDoubleClicked.connect(self._on_connect)
+        layout.addWidget(self.list_widget, 1)
+
+        # Buttons row
+        btn_layout = QHBoxLayout()
+        btn_layout.setSpacing(8)
+
+        self.add_btn = make_primary_button("  Add Server", ICON_DOWNLOAD)
+        self.add_btn.setToolTip("Add a new gRPC server to the list")
+        self.add_btn.clicked.connect(self._on_add)
+
+        self.edit_btn = make_secondary_button("  Edit", ICON_SLIDERS)
+        self.edit_btn.setToolTip("Edit the selected server's name or address")
+        self.edit_btn.clicked.connect(self._on_edit)
+        self.edit_btn.setEnabled(False)
+
+        self.remove_btn = make_secondary_button("  Remove", ICON_STOP)
+        self.remove_btn.setToolTip("Remove the selected server from the list")
+        self.remove_btn.clicked.connect(self._on_remove)
+        self.remove_btn.setEnabled(False)
+
+        self.test_btn = make_secondary_button("  Test", ICON_REFRESH)
+        self.test_btn.setToolTip("Test the connection to the selected server")
+        self.test_btn.clicked.connect(self._on_test)
+        self.test_btn.setEnabled(False)
+
+        self.connect_btn = make_primary_button("  Connect", ICON_CONNECT)
+        self.connect_btn.setToolTip("Connect to the selected server")
+        self.connect_btn.clicked.connect(self._on_connect)
+        self.connect_btn.setEnabled(False)
+
+        btn_layout.addWidget(self.add_btn)
+        btn_layout.addWidget(self.edit_btn)
+        btn_layout.addWidget(self.remove_btn)
+        btn_layout.addStretch()
+        btn_layout.addWidget(self.test_btn)
+        btn_layout.addWidget(self.connect_btn)
+
+        layout.addLayout(btn_layout)
+
+        # Close button
+        close_btn = make_secondary_button("  Done", ICON_CHECK)
+        close_btn.clicked.connect(self.accept)
+        close_layout = QHBoxLayout()
+        close_layout.addStretch()
+        close_layout.addWidget(close_btn)
+        layout.addLayout(close_layout)
+
+    def refresh_list(self):
+        self.list_widget.clear()
+        for server in self.servers:
+            item = QListWidgetItem()
+            item.setData(Qt.UserRole, server)
+            
+            # Create custom widget for each item
+            widget = QWidget()
+            w_layout = QHBoxLayout(widget)
+            w_layout.setContentsMargins(8, 4, 8, 4)
+            w_layout.setSpacing(10)
+
+            # Status indicator
+            status_lbl = QLabel("●")
+            status_lbl.setStyleSheet(f"color: {MACOS_TERTIARY}; font-size: 12px;")
+            status_lbl.setFixedWidth(16)
+            w_layout.addWidget(status_lbl)
+
+            # Server info
+            info_layout = QVBoxLayout()
+            info_layout.setSpacing(2)
+            
+            name_lbl = QLabel(server.get('name', 'Unnamed'))
+            name_lbl.setStyleSheet(f"font-weight: 600; color: {MACOS_TEXT}; font-size: 13px;")
+            info_layout.addWidget(name_lbl)
+
+            addr_lbl = QLabel(server.get('address', ''))
+            addr_lbl.setStyleSheet(f"color: {MACOS_SECONDARY}; font-size: 12px; font-family: monospace;")
+            info_layout.addWidget(addr_lbl)
+
+            w_layout.addLayout(info_layout)
+            w_layout.addStretch()
+
+            # Last connected
+            last = server.get('last_connected')
+            if last:
+                from datetime import datetime
+                try:
+                    dt = datetime.fromisoformat(last)
+                    last_str = dt.strftime("%b %d, %H:%M")
+                except Exception:
+                    last_str = last
+                last_lbl = QLabel(last_str)
+                last_lbl.setStyleSheet(f"color: {MACOS_TERTIARY}; font-size: 12px;")
+                w_layout.addWidget(last_lbl)
+
+            item.setSizeHint(widget.sizeHint())
+            self.list_widget.addItem(item)
+            self.list_widget.setItemWidget(item, widget)
+
+        # Select first item
+        if self.list_widget.count() > 0:
+            self.list_widget.setCurrentRow(0)
+
+    def _on_selection_changed(self):
+        has_selection = len(self.list_widget.selectedItems()) > 0
+        self.edit_btn.setEnabled(has_selection)
+        self.remove_btn.setEnabled(has_selection)
+        self.test_btn.setEnabled(has_selection)
+        self.connect_btn.setEnabled(has_selection)
+
+    def _get_selected_server(self) -> Optional[Dict]:
+        items = self.list_widget.selectedItems()
+        if not items:
+            return None
+        return items[0].data(Qt.UserRole)
+
+    def _on_add(self):
+        dialog = ServerEditDialog(self)
+        if dialog.exec() == QDialog.Accepted:
+            server = dialog.get_server_data()
+            self.servers.append(server)
+            save_servers(self.servers)
+            self.refresh_list()
+            # Select the new item
+            self.list_widget.setCurrentRow(self.list_widget.count() - 1)
+
+    def _on_edit(self):
+        server = self._get_selected_server()
+        if not server:
+            return
+        dialog = ServerEditDialog(self, server)
+        if dialog.exec() == QDialog.Accepted:
+            updated = dialog.get_server_data()
+            # Find and update
+            for i, s in enumerate(self.servers):
+                if s.get('address') == server.get('address') and s.get('name') == server.get('name'):
+                    self.servers[i] = updated
+                    break
+            save_servers(self.servers)
+            self.refresh_list()
+
+    def _on_remove(self):
+        server = self._get_selected_server()
+        if not server:
+            return
+        
+        name = server.get('name', 'this server')
+        reply = QMessageBox.question(
+            self, "Remove Server",
+            f"Remove '{name}' from the server list?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+        if reply == QMessageBox.Yes:
+            self.servers = [s for s in self.servers if s != server]
+            save_servers(self.servers)
+            self.refresh_list()
+
+    def _on_test(self):
+        server = self._get_selected_server()
+        if not server:
+            return
+        
+        addr = server.get('address', '')
+        self.test_btn.setText("  Testing...")
+        self.test_btn.setEnabled(False)
+        QApplication.processEvents()
+
+        # Test connection in background
+        import threading
+        def test():
+            client = GrpcClient(addr)
+            success = client.connect()
+            client.disconnect()
+            # Update UI on main thread
+            QMetaObject.invokeMethod(
+                self, "_on_test_result", Qt.QueuedConnection,
+                Q_ARG(bool, success), Q_ARG(str, addr)
+            )
+        
+        threading.Thread(target=test, daemon=True).start()
+
+    @Slot(bool, str)
+    def _on_test_result(self, success: bool, addr: str):
+        self.test_btn.setText("  Test")
+        self.test_btn.setEnabled(True)
+        
+        # Update status in list
+        for i in range(self.list_widget.count()):
+            item = self.list_widget.item(i)
+            server = item.data(Qt.UserRole)
+            if server.get('address') == addr:
+                widget = self.list_widget.itemWidget(item)
+                if widget:
+                    status_lbl = widget.findChild(QLabel)
+                    if status_lbl:
+                        status_lbl.setStyleSheet(
+                            f"color: {MACOS_GREEN if success else MACOS_RED}; font-size: 12px;"
+                        )
+                        status_lbl.setText("●")
+                break
+        
+        QMessageBox.information(
+            self, "Connection Test",
+            f"Connection to {addr} {'succeeded' if success else 'failed'}."
+        )
+
+    def _on_connect(self):
+        server = self._get_selected_server()
+        if not server:
+            return
+        self.selected_server = server
+        self.accept()
+
+    def get_selected_server(self) -> Optional[Dict]:
+        return getattr(self, 'selected_server', None)
+
+
+class ServerEditDialog(QDialog):
+    """Dialog for adding/editing a server."""
+    
+    def __init__(self, parent=None, server: Dict = None):
+        super().__init__(parent)
+        self.server = server or {}
+        self.setWindowTitle("Edit Server" if server else "Add Server")
+        self.setModal(True)
+        self.setFixedWidth(420)
+        self.setStyleSheet(f"""
+            QDialog {{
+                background: {MACOS_BG};
+            }}
+        """)
+        self.setup_ui()
+
+    def setup_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(24, 24, 24, 24)
+        layout.setSpacing(16)
+
+        # Form
+        form = QFormLayout()
+        form.setSpacing(12)
+        form.setLabelAlignment(Qt.AlignRight)
+
+        # Name
+        self.name_edit = QLineEdit()
+        self.name_edit.setPlaceholderText("e.g., Living Room Camera")
+        self.name_edit.setText(self.server.get('name', ''))
+        self.name_edit.setStyleSheet(f"""
+            QLineEdit {{
+                border: 1px solid {MACOS_BORDER}; border-radius: 8px;
+                padding: 8px 12px; font-size: 13px; background: white;
+            }}
+            QLineEdit:focus {{
+                border-color: {MACOS_BLUE};
+                background: #F0F5FF;
+            }}
+        """)
+        form.addRow(self._make_label("Name"), self.name_edit)
+
+        # Address
+        self.addr_edit = QLineEdit()
+        self.addr_edit.setPlaceholderText("192.168.1.42:50051")
+        self.addr_edit.setText(self.server.get('address', ''))
+        self.addr_edit.setStyleSheet(self.name_edit.styleSheet())
+        form.addRow(self._make_label("Address"), self.addr_edit)
+
+        layout.addLayout(form)
+
+        # Help text
+        help_text = QLabel(
+            "Enter the IP address and port of the Raspberry Pi running the IMX708 gRPC server."
+            " Default port is 50051. Example: 192.168.1.42:50051"
+        )
+        help_text.setWordWrap(True)
+        help_text.setStyleSheet(f"color: {MACOS_SECONDARY}; font-size: 12px;")
+        layout.addWidget(help_text)
+
+        # Buttons
+        btn_layout = QHBoxLayout()
+        btn_layout.setSpacing(10)
+        btn_layout.addStretch()
+
+        cancel_btn = make_secondary_button("Cancel", ICON_STOP)
+        cancel_btn.setToolTip("Discard changes and close")
+        cancel_btn.clicked.connect(self.reject)
+        
+        save_btn = make_primary_button("Save", ICON_CHECK)
+        save_btn.setToolTip("Save the server configuration")
+        save_btn.clicked.connect(self._validate_and_accept)
+
+        btn_layout.addWidget(cancel_btn)
+        btn_layout.addWidget(save_btn)
+        layout.addLayout(btn_layout)
+
+    def _make_label(self, text: str) -> QLabel:
+        lbl = QLabel(text)
+        lbl.setStyleSheet(f"font-weight: 500; color: {MACOS_TEXT}; font-size: 13px;")
+        return lbl
+
+    def _validate_and_accept(self):
+        name = self.name_edit.text().strip()
+        addr = self.addr_edit.text().strip()
+
+        if not name:
+            QMessageBox.warning(self, "Invalid Name", "Please enter a server name.")
+            self.name_edit.setFocus()
+            return
+
+        if not addr:
+            QMessageBox.warning(self, "Invalid Address", "Please enter a server address.")
+            self.addr_edit.setFocus()
+            return
+
+        # Basic address validation
+        if ':' not in addr:
+            QMessageBox.warning(self, "Invalid Address", "Address must be in format host:port (e.g., 192.168.1.42:50051).")
+            self.addr_edit.setFocus()
+            return
+
+        self.accept()
+
+    def get_server_data(self) -> Dict:
+        return {
+            'name': self.name_edit.text().strip(),
+            'address': self.addr_edit.text().strip(),
+            'last_connected': None
+        }
+
+
+# =========================================================================
 # Main Window
 # =========================================================================
 
 class MainWindow(QMainWindow):
     """Main application window with elegant macOS-inspired design."""
 
-    def __init__(self, server_addr: str = "localhost:50051"):
+    def __init__(self, server_addr: str = None):
         super().__init__()
+        # Use last server from config if not provided
+        if server_addr is None:
+            server_addr = get_last_server()
         self.server_addr = server_addr
         self.client = GrpcClient(server_addr)
         self.setup_ui()
@@ -1872,6 +2458,9 @@ class MainWindow(QMainWindow):
         self.setStyleSheet(f"""
             QMainWindow {{ background: {MACOS_BG}; }}
         """)
+
+        # Set application window icon
+        self.setWindowIcon(make_icon(ICON_CAMERA, 32, MACOS_BLUE))
 
         # Central widget
         central = QWidget()
@@ -1917,7 +2506,7 @@ class MainWindow(QMainWindow):
         self.status_bar.setStyleSheet(f"""
             QStatusBar {{
                 background: {MACOS_BG}; border-top: 1px solid {MACOS_BORDER};
-                font-size: 11px; color: {MACOS_SECONDARY}; padding: 2px 12px;
+                font-size: 12px; color: {MACOS_SECONDARY}; padding: 2px 12px;
             }}
         """)
         self.setStatusBar(self.status_bar)
@@ -1934,7 +2523,7 @@ class MainWindow(QMainWindow):
         menubar.setStyleSheet(f"""
             QMenuBar {{
                 background: {MACOS_BG}; border-bottom: 1px solid {MACOS_BORDER};
-                font-size: 12px; padding: 2px 4px;
+                font-size: 13px; padding: 2px 4px;
             }}
             QMenuBar::item {{
                 padding: 4px 10px; border-radius: 4px;
@@ -1958,33 +2547,261 @@ class MainWindow(QMainWindow):
             }}
         """)
 
+        # ── File ──
         file_menu = menubar.addMenu("File")
-        connect_action = QAction("Connect", self)
-        connect_action.triggered.connect(self.pages[0].toggle_connect)
-        file_menu.addAction(connect_action)
+
+        # Servers submenu
+        servers_menu = file_menu.addMenu("Servers")
+
+        manage_action = QAction("Manage Servers...", self)
+        manage_action.setShortcut("Ctrl+M")
+        manage_action.triggered.connect(self._show_server_dialog)
+        servers_menu.addAction(manage_action)
+
+        servers_menu.addSeparator()
+
+        # Quick connect to recent servers
+        self.recent_actions = []
+        self._update_recent_servers_menu(servers_menu)
+
+        file_menu.addSeparator()
+
+        # Preferences (macOS: routes to app menu automatically)
+        prefs_action = QAction("Preferences...", self)
+        prefs_action.setMenuRole(QAction.PreferencesRole)
+        prefs_action.setShortcut("Ctrl+,")
+        prefs_action.triggered.connect(self._show_server_dialog)
+        file_menu.addAction(prefs_action)
 
         file_menu.addSeparator()
 
         quit_action = QAction("Quit", self)
+        quit_action.setMenuRole(QAction.QuitRole)
         quit_action.setShortcut("Ctrl+Q")
         quit_action.triggered.connect(self.close)
         file_menu.addAction(quit_action)
 
+        # ── Edit ──
+        edit_menu = menubar.addMenu("Edit")
+
+        undo_action = QAction("Undo", self)
+        undo_action.setShortcut(QKeySequence.StandardKey.Undo)
+        edit_menu.addAction(undo_action)
+
+        redo_action = QAction("Redo", self)
+        redo_action.setShortcut(QKeySequence.StandardKey.Redo)
+        edit_menu.addAction(redo_action)
+
+        edit_menu.addSeparator()
+
+        cut_action = QAction("Cut", self)
+        cut_action.setShortcut(QKeySequence.StandardKey.Cut)
+        edit_menu.addAction(cut_action)
+
+        copy_action = QAction("Copy", self)
+        copy_action.setShortcut(QKeySequence.StandardKey.Copy)
+        edit_menu.addAction(copy_action)
+
+        paste_action = QAction("Paste", self)
+        paste_action.setShortcut(QKeySequence.StandardKey.Paste)
+        edit_menu.addAction(paste_action)
+
+        edit_menu.addSeparator()
+
+        select_all_action = QAction("Select All", self)
+        select_all_action.setShortcut(QKeySequence.StandardKey.SelectAll)
+        edit_menu.addAction(select_all_action)
+
+        # ── View ──
         view_menu = menubar.addMenu("View")
+
+        self.view_actions = []
         for i, name in enumerate(["Dashboard", "Controls", "Capture", "Image",
                                     "Test Patterns", "Registers", "Info"]):
             action = QAction(name, self)
+            action.setCheckable(True)
+            if i == 0:
+                action.setChecked(True)
             action.triggered.connect(lambda checked, idx=i: self._switch_page(idx))
             view_menu.addAction(action)
+            self.view_actions.append(action)
 
+        view_menu.addSeparator()
+
+        toggle_sidebar_action = QAction("Toggle Sidebar", self)
+        toggle_sidebar_action.setCheckable(True)
+        toggle_sidebar_action.setChecked(True)
+        toggle_sidebar_action.setShortcut("Ctrl+\\")
+        toggle_sidebar_action.triggered.connect(self._toggle_sidebar)
+        view_menu.addAction(toggle_sidebar_action)
+
+        # ── Tools ──
+        tools_menu = menubar.addMenu("Tools")
+
+        connect_action = QAction("Connect to Server", self)
+        connect_action.setShortcut("Ctrl+R")
+        connect_action.triggered.connect(self.pages[0].toggle_connect)
+        tools_menu.addAction(connect_action)
+
+        start_stream_action = QAction("Start/Stop Stream", self)
+        start_stream_action.setShortcut("Ctrl+Shift+S")
+        start_stream_action.triggered.connect(self._toggle_stream_from_menu)
+        tools_menu.addAction(start_stream_action)
+
+        tools_menu.addSeparator()
+
+        soft_reset_action = QAction("Soft Reset Sensor", self)
+        soft_reset_action.setShortcut("Ctrl+Shift+R")
+        soft_reset_action.triggered.connect(self._soft_reset_from_menu)
+        tools_menu.addAction(soft_reset_action)
+
+        # ── Window (macOS) ──
+        window_menu = menubar.addMenu("Window")
+
+        minimize_action = QAction("Minimize", self)
+        minimize_action.setShortcut("Ctrl+M")
+        minimize_action.triggered.connect(self.showMinimized)
+        window_menu.addAction(minimize_action)
+
+        zoom_action = QAction("Zoom", self)
+        zoom_action.triggered.connect(self.showMaximized)
+        window_menu.addAction(zoom_action)
+
+        window_menu.addSeparator()
+
+        # ── Help ──
         help_menu = menubar.addMenu("Help")
+
+        docs_action = QAction("IMX708 Documentation", self)
+        docs_action.setShortcut("F1")
+        docs_action.triggered.connect(self._show_docs)
+        help_menu.addAction(docs_action)
+
+        help_menu.addSeparator()
+
         about_action = QAction("About IMX708", self)
+        about_action.setMenuRole(QAction.AboutRole)
         about_action.triggered.connect(self._show_about)
         help_menu.addAction(about_action)
+
+    def _update_recent_servers_menu(self, menu):
+        """Update the recent servers submenu."""
+        # Remove old actions
+        for action in self.recent_actions:
+            menu.removeAction(action)
+        self.recent_actions.clear()
+
+        servers = load_servers()
+        for server in servers[:5]:  # Show max 5 recent
+            action = QAction(f"{server['name']} ({server['address']})", self)
+            action.triggered.connect(lambda checked, s=server: self._connect_to_server(s))
+            menu.addAction(action)
+            self.recent_actions.append(action)
+
+        if servers:
+            menu.addSeparator()
+
+        clear_action = QAction("Clear Recent", self)
+        clear_action.triggered.connect(self._clear_recent_servers)
+        menu.addAction(clear_action)
+        self.recent_actions.append(clear_action)
+
+    def _clear_recent_servers(self):
+        """Clear recent servers from config."""
+        save_servers([])
+        # Rebuild the menu bar to refresh
+        self.setup_menu()
+
+    def _show_server_dialog(self):
+        """Show the server management dialog."""
+        dialog = ConnectionDialog(self)
+        if dialog.exec() == QDialog.Accepted:
+            server = dialog.get_selected_server()
+            if server:
+                self._connect_to_server(server)
+
+    def _connect_to_server(self, server: Dict):
+        """Connect to a selected server."""
+        addr = server['address']
+        name = server['name']
+        
+        # Disconnect current
+        if self.client.connected:
+            self.client.disconnect()
+        
+        # Update client
+        self.server_addr = addr
+        self.client = GrpcClient(addr)
+        
+        # Reconnect signals
+        self.client.connection_changed.connect(self._on_connection_changed)
+        self.client.log_message.connect(self._on_log)
+        
+        # Update pages with new client
+        for page in self.pages:
+            page.client = self.client
+        
+        # Update sidebar
+        self.sidebar.set_connected(False)
+        
+        # Auto-connect
+        self.pages[0].toggle_connect()
+        
+        # Save as last used
+        set_last_server(addr)
+        
+        # Update last connected timestamp
+        from datetime import datetime
+        servers = load_servers()
+        for s in servers:
+            if s['address'] == addr and s['name'] == name:
+                s['last_connected'] = datetime.now().isoformat()
+                break
+        save_servers(servers)
+        
+        # Update recent menu — rebuild to refresh
+        self.setup_menu()
 
     def _switch_page(self, index: int):
         if 0 <= index < self.stack.count():
             self.stack.setCurrentIndex(index)
+            # Update View menu check states
+            if hasattr(self, 'view_actions'):
+                for i, action in enumerate(self.view_actions):
+                    action.setChecked(i == index)
+
+    def _toggle_sidebar(self, visible: bool):
+        """Toggle sidebar visibility."""
+        self.sidebar.setVisible(visible)
+
+    def _toggle_stream_from_menu(self):
+        """Toggle stream from menu bar."""
+        if self.client.connected:
+            self.pages[0]._toggle_stream()
+
+    def _soft_reset_from_menu(self):
+        """Soft reset with confirmation from menu bar."""
+        if not self.client.connected:
+            return
+        reply = QMessageBox.question(
+            self, "Soft Reset",
+            "Are you sure you want to soft-reset the sensor?\n\n"
+            "This will stop any active stream and reset all settings.",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+        if reply == QMessageBox.Yes:
+            self.client.soft_reset()
+            self.status_bar.showMessage("Sensor soft reset completed", 3000)
+
+    def _show_docs(self):
+        """Show documentation link."""
+        QMessageBox.information(
+            self, "IMX708 Documentation",
+            "Documentation is available at:\n\n"
+            "https://github.com/soccentric/imx708\n\n"
+            "See the README.md and docs/ folder for details."
+        )
 
     def _on_connection_changed(self, connected: bool):
         self.sidebar.set_connected(connected)
@@ -2015,12 +2832,15 @@ class MainWindow(QMainWindow):
 def main():
     import argparse
     parser = argparse.ArgumentParser(description="IMX708 Camera GUI Client")
-    parser.add_argument("--server", default="localhost:50051",
-                        help="gRPC server address (default: localhost:50051)")
+    parser.add_argument("--server", default=None,
+                        help="gRPC server address (default: from config, or localhost:50051)")
     args = parser.parse_args()
 
     app = QApplication(sys.argv)
     app.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
+
+    # Set application icon (used for window icon on some platforms)
+    app.setWindowIcon(make_icon(ICON_CAMERA, 32, MACOS_BLUE))
 
     # macOS-like font
     font = QFont()

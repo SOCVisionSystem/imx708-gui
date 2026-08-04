@@ -12,46 +12,58 @@
 #
 
 GUI_DIR    := $(CURDIR)
-BUILD_DIR  := $(GUI_DIR)/build
+# NOT "build/": that is setuptools' own scratch directory and it wipes the
+# generated stubs during packaging.
+PROTO_DIR  := $(GUI_DIR)/imx708_proto
 CLIENT_PY  := $(GUI_DIR)/imx708_client.py
-UV        := $(shell command -v uv 2>/dev/null || echo "pip")
+SERVER     ?= localhost:50051
 
-.PHONY: all clean run exe deps help
+# Prefer uv when it is available, otherwise drive the system interpreter.
+# RUN is used consistently below; it used to be computed and then ignored.
+ifeq ($(shell command -v uv 2>/dev/null),)
+RUN := python3 -m
+RUNNER := python3
+else
+RUN := uv run python -m
+RUNNER := uv run python
+endif
 
-all: $(BUILD_DIR)/imx708_pb2.py
+.PHONY: all clean distclean run exe deps help
 
-$(BUILD_DIR)/imx708_pb2.py: proto/imx708.proto
+all: $(PROTO_DIR)/imx708_pb2.py
+
+# No "|| echo [WARN]" here: swallowing a protoc failure produced a GUI that
+# started up and then reported "gRPC or proto modules not available".
+$(PROTO_DIR)/imx708_pb2.py: proto/imx708.proto
 	@echo "Generating gRPC stubs..."
-	@mkdir -p $(BUILD_DIR)
-	uv run grpc_tools.protoc \
+	@mkdir -p $(PROTO_DIR)
+	$(RUN) grpc_tools.protoc \
 		-I$(GUI_DIR)/proto \
-		--python_out=$(BUILD_DIR) \
-		--grpc_python_out=$(BUILD_DIR) \
-		$(GUI_DIR)/proto/imx708.proto 2>/dev/null || \
-	python3 -m grpc_tools.protoc \
-		-I$(GUI_DIR)/proto \
-		--python_out=$(BUILD_DIR) \
-		--grpc_python_out=$(BUILD_DIR) \
-		$(GUI_DIR)/proto/imx708.proto 2>/dev/null || \
-	echo "  [WARN] Install grpcio-tools: uv sync"
-	@touch $(BUILD_DIR)/__init__.py
+		--python_out=$(PROTO_DIR) \
+		--grpc_python_out=$(PROTO_DIR) \
+		$(GUI_DIR)/proto/imx708.proto
+	@touch $(PROTO_DIR)/__init__.py
 
+# .venv/ is deliberately left alone: "make clean" should not destroy the
+# developer's environment and force a full re-download.
 clean:
-	rm -rf $(BUILD_DIR)
-	rm -rf dist/ __pycache__/ *.spec .venv/
+	rm -rf $(PROTO_DIR)
+	rm -rf build/ dist/ __pycache__/ *.spec *.egg-info/
+
+distclean: clean
+	rm -rf .venv/
 
 run: all
 	@echo "Starting IMX708 GUI client..."
-	uv run python $(CLIENT_PY) --server $(SERVER)
+	$(RUNNER) $(CLIENT_PY) --server $(SERVER)
 
 exe: all
 	@echo "Building standalone executable..."
-	uv run pyinstaller --onefile --windowed \
+	$(RUN) PyInstaller --onefile --windowed \
 		--name "IMX708Cam" \
-		--add-data "$(BUILD_DIR)/imx708_pb2.py:." \
-		--add-data "$(BUILD_DIR)/imx708_pb2_grpc.py:." \
-		$(CLIENT_PY) 2>/dev/null || \
-	echo "  [WARN] pyinstaller not available. Install with: uv tool install pyinstaller"
+		--add-data "$(PROTO_DIR)/imx708_pb2.py:." \
+		--add-data "$(PROTO_DIR)/imx708_pb2_grpc.py:." \
+		$(CLIENT_PY)
 
 deps:
 	@echo "Syncing dependencies with uv..."
@@ -63,7 +75,8 @@ help:
 	@echo ""
 	@echo "Targets:"
 	@echo "  all       Generate gRPC stubs (default)"
-	@echo "  clean     Remove build artifacts"
+	@echo "  clean     Remove build artifacts (keeps .venv)"
+	@echo "  distclean Remove build artifacts and .venv"
 	@echo "  run       Launch GUI (use SERVER=ip:port)"
 	@echo "  exe       Build standalone executable"
 	@echo "  deps      Sync dependencies with uv"
