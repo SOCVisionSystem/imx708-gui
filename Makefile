@@ -57,12 +57,22 @@ run: all
 	@echo "Starting IMX708 GUI client..."
 	$(RUNNER) $(CLIENT_PY) --server $(SERVER)
 
+# PyInstaller's --add-data separator is ":" everywhere except Windows,
+# which needs ";" (colon collides with drive letters like "C:"). Destination
+# is imx708_proto/ to match build.sh and the sys.path setup in imx708_client.py.
+ifeq ($(OS),Windows_NT)
+DATA_SEP := ;
+else
+DATA_SEP := :
+endif
+
 exe: all
 	@echo "Building standalone executable..."
 	$(RUN) PyInstaller --onefile --windowed \
 		--name "IMX708Cam" \
-		--add-data "$(PROTO_DIR)/imx708_pb2.py:." \
-		--add-data "$(PROTO_DIR)/imx708_pb2_grpc.py:." \
+		--add-data "$(PROTO_DIR)/imx708_pb2.py$(DATA_SEP)imx708_proto" \
+		--add-data "$(PROTO_DIR)/imx708_pb2_grpc.py$(DATA_SEP)imx708_proto" \
+		--add-data "$(PROTO_DIR)/__init__.py$(DATA_SEP)imx708_proto" \
 		$(CLIENT_PY)
 
 deps:

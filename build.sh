@@ -59,12 +59,22 @@ fi
 if [ "$MODE" = "--exe" ]; then
     echo ""
     echo "[2/3] Building executable..."
+    # PyInstaller's --add-data wants "SRC<sep>DEST", and the separator is
+    # platform-specific: ":" everywhere except Windows, which needs ";"
+    # (colon collides with drive letters like "C:"). This script itself
+    # only runs under bash (Windows users need Git Bash/MSYS2/WSL), but
+    # MSYS2/Git Bash both still target native Windows PyInstaller, which
+    # enforces the Windows rule regardless of the shell running it.
+    case "$(uname -s)" in
+        MINGW*|MSYS*|CYGWIN*) DATA_SEP=";" ;;
+        *) DATA_SEP=":" ;;
+    esac
     "${RUN_CMD[@]}" pyinstaller --onefile --windowed \
         --name "IMX708Cam" \
         --icon "${GUI_DIR}/app_icon.png" \
-        --add-data "${PROTO_OUT}/imx708_pb2.py:imx708_proto" \
-        --add-data "${PROTO_OUT}/imx708_pb2_grpc.py:imx708_proto" \
-        --add-data "${PROTO_OUT}/__init__.py:imx708_proto" \
+        --add-data "${PROTO_OUT}/imx708_pb2.py${DATA_SEP}imx708_proto" \
+        --add-data "${PROTO_OUT}/imx708_pb2_grpc.py${DATA_SEP}imx708_proto" \
+        --add-data "${PROTO_OUT}/__init__.py${DATA_SEP}imx708_proto" \
         --hidden-import "google.protobuf" \
         --hidden-import "google.protobuf.descriptor" \
         --hidden-import "google.protobuf.message" \

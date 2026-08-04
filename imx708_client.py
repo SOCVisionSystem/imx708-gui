@@ -21,33 +21,28 @@ Build executable:
 import sys
 import os
 import json
-import time
-import struct
 import threading
 from pathlib import Path
-from typing import Optional, List, Dict, Any
-from dataclasses import dataclass, field
+from typing import Optional, List, Dict
 
 # Try to import PySide6
 try:
     from PySide6.QtCore import (
-        Qt, QThread, Signal, QObject, QTimer, QSize, QByteArray,
-        QPropertyAnimation, QEasingCurve, QRect, QPoint, QMargins,
+        Qt, Signal, QObject, QByteArray, QRectF, QPointF, QSize,
         QMetaObject, Q_ARG, Slot
     )
     from PySide6.QtGui import (
         QAction, QColor, QFont, QIcon, QPainter, QPixmap,
-        QPalette, QBrush, QLinearGradient, QFontDatabase,
-        QCursor, QPen, QPainterPath, QFontMetrics, QKeySequence
+        QCursor, QPen, QPainterPath, QKeySequence
     )
     from PySide6.QtWidgets import (
         QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-        QPushButton, QLabel, QSlider, QComboBox, QGroupBox, QGridLayout,
-        QFormLayout, QTabWidget, QTextEdit, QStatusBar, QMenuBar,
-        QMenu, QFileDialog, QMessageBox, QCheckBox, QSpinBox,
-        QDoubleSpinBox, QScrollArea, QFrame, QSplitter, QListWidget,
-        QListWidgetItem, QStackedWidget, QToolButton, QSizePolicy,
-        QProgressBar, QLineEdit, QPlainTextEdit, QGraphicsDropShadowEffect,
+        QPushButton, QLabel, QComboBox, QGroupBox, QGridLayout,
+        QFormLayout, QTextEdit, QStatusBar,
+        QFileDialog, QMessageBox, QCheckBox, QSpinBox,
+        QFrame, QListWidget,
+        QListWidgetItem, QStackedWidget,
+        QProgressBar, QLineEdit,
         QDialog
     )
 except ImportError:
@@ -105,7 +100,7 @@ MACOS_GRAY      = "#8E8E93"       # Gray
 
 # Card shadow
 CARD_SHADOW = """
-    background: white; border: 1px solid %s; border-radius: 12px;
+    background: white; border: 1px solid %s; border-radius: 10px;
 """ % MACOS_BORDER
 
 # =========================================================================
@@ -479,7 +474,7 @@ class SidebarWidget(QWidget):
 
         title_text = QLabel("IMX708")
         title_text.setStyleSheet(f"""
-            font-size: 17px; font-weight: 700; color: {MACOS_TEXT};
+            font-size: 16px; font-weight: 700; color: {MACOS_TEXT};
             letter-spacing: -0.5px;
         """)
         title_layout.addWidget(title_text)
@@ -509,8 +504,11 @@ class SidebarWidget(QWidget):
 
         # Connection status indicator
         status_frame = QFrame()
+        status_frame.setObjectName("statusFrame")
+        # Scoped to #statusFrame — see make_card() for why an unscoped
+        # "QFrame {...}" rule is unsafe (it leaks onto child QLabels).
         status_frame.setStyleSheet(f"""
-            QFrame {{
+            QFrame#statusFrame {{
                 background: white; border-radius: 8px;
                 border: 1px solid {MACOS_BORDER}; padding: 8px;
             }}
@@ -563,16 +561,20 @@ class SidebarWidget(QWidget):
 def make_card(title: str, value: str, color: str, icon_svg: str = None) -> QFrame:
     """Create a beautiful macOS-style info card."""
     card = QFrame()
+    card.setObjectName("statCard")
+    # Scoped to #statCard: a bare "QFrame {...}" rule also matches every
+    # descendant QLabel (QLabel is a QFrame subclass), which drew a
+    # pill-shaped border around the icon/title/value inside the card.
     card.setStyleSheet(f"""
-        QFrame {{
-            background: white; border-radius: 12px;
+        QFrame#statCard {{
+            background: white; border-radius: 10px;
             border: 1px solid {MACOS_BORDER};
         }}
     """)
     card.setMinimumSize(130, 110)
 
     layout = QVBoxLayout(card)
-    layout.setContentsMargins(14, 12, 14, 12)
+    layout.setContentsMargins(16, 16, 16, 16)
     layout.setSpacing(4)
 
     if icon_svg:
@@ -585,7 +587,7 @@ def make_card(title: str, value: str, color: str, icon_svg: str = None) -> QFram
     layout.addWidget(title_lbl)
 
     val_lbl = QLabel(value)
-    val_lbl.setStyleSheet(f"color: {color}; font-size: 26px; font-weight: 700;")
+    val_lbl.setStyleSheet(f"color: {color}; font-size: 20px; font-weight: 700;")
     val_lbl.setObjectName("card_value")
     layout.addWidget(val_lbl)
     layout.addStretch()
@@ -595,7 +597,10 @@ def make_card(title: str, value: str, color: str, icon_svg: str = None) -> QFram
 
 def make_group_box(title: str) -> QGroupBox:
     """Create a macOS-style group box."""
-    gb = QGroupBox(title)
+    # QGroupBox titles treat "&" as a mnemonic marker (it gets consumed and
+    # the next letter underlined) — escape it so titles like "White Balance
+    # & Orientation" render literally instead of as "White Balance _rientation".
+    gb = QGroupBox(title.replace("&", "&&"))
     gb.setStyleSheet(f"""
         QGroupBox {{
             font-size: 16px; font-weight: 600; color: {MACOS_TEXT};
@@ -673,7 +678,7 @@ def make_header(text: str) -> QLabel:
     """Create a macOS-style page header."""
     lbl = QLabel(text)
     lbl.setStyleSheet(f"""
-        font-size: 22px; font-weight: 700; color: {MACOS_TEXT};
+        font-size: 20px; font-weight: 700; color: {MACOS_TEXT};
         letter-spacing: -0.3px;
     """)
     return lbl
@@ -685,6 +690,28 @@ def make_description(text: str) -> QLabel:
     lbl.setStyleSheet(f"color: {MACOS_SECONDARY}; font-size: 13px;")
     lbl.setWordWrap(True)
     return lbl
+
+
+def combo_style(min_width: int = 120) -> str:
+    """Shared macOS-style QComboBox stylesheet with hover/focus states."""
+    return f"""
+        QComboBox {{
+            padding: 6px 12px; border: 1px solid {MACOS_BORDER};
+            border-radius: 8px; background: white; font-size: 13px;
+            min-width: {min_width}px;
+        }}
+        QComboBox:hover {{
+            border-color: {MACOS_BLUE};
+        }}
+        QComboBox::drop-down {{
+            border: none; width: 24px;
+        }}
+        QComboBox QAbstractItemView {{
+            border: 1px solid {MACOS_BORDER}; border-radius: 8px;
+            background: white; selection-background-color: {MACOS_BLUE};
+            selection-color: white; padding: 4px;
+        }}
+    """
 
 
 # =========================================================================
@@ -1055,17 +1082,11 @@ class DashboardPage(QWidget):
 
         layout.addWidget(settings_group)
 
-        # Top Action Bar (macOS-style)
-        action_bar = QFrame()
-        action_bar.setStyleSheet(f"""
-            QFrame {{
-                background: white; border-radius: 10px;
-                border: 1px solid {MACOS_BORDER};
-            }}
-        """)
-        action_bar.setFixedHeight(56)
-        action_layout = QHBoxLayout(action_bar)
-        action_layout.setContentsMargins(12, 8, 12, 8)
+        # Top Action Bar — a plain toolbar row, not a card. A bordered
+        # container here just produced a wide, mostly-empty white box since
+        # the buttons never fill the row's width.
+        action_layout = QHBoxLayout()
+        action_layout.setContentsMargins(0, 0, 0, 0)
         action_layout.setSpacing(8)
 
         self.connect_btn = make_primary_button("  Connect", ICON_CONNECT)
@@ -1107,7 +1128,7 @@ class DashboardPage(QWidget):
         action_layout.addWidget(self.loading_bar)
         action_layout.addStretch()
 
-        layout.addWidget(action_bar)
+        layout.addLayout(action_layout)
         layout.addStretch()
 
     def _update_status(self, status: Dict):
@@ -1126,9 +1147,9 @@ class DashboardPage(QWidget):
 
         # Update colors
         self.status_cards['streaming'].findChild(QLabel, "card_value").setStyleSheet(
-            f"color: {MACOS_GREEN if streaming else MACOS_RED}; font-size: 26px; font-weight: 700;")
+            f"color: {MACOS_GREEN if streaming else MACOS_RED}; font-size: 20px; font-weight: 700;")
         self.status_cards['pll'].findChild(QLabel, "card_value").setStyleSheet(
-            f"color: {MACOS_GREEN if pll else MACOS_RED}; font-size: 26px; font-weight: 700;")
+            f"color: {MACOS_GREEN if pll else MACOS_RED}; font-size: 20px; font-weight: 700;")
 
         # Update info
         self.gain_label.setText(f"{status.get('gain', 0)}")
@@ -1265,7 +1286,10 @@ class ControlsPage(QWidget):
         apply_gain = make_primary_button("Apply Gain", ICON_CHECK)
         apply_gain.setToolTip("Send the current gain values to the sensor")
         apply_gain.clicked.connect(self._apply_gain)
-        gain_layout.addRow("", apply_gain)
+        apply_gain_row = QHBoxLayout()
+        apply_gain_row.addWidget(apply_gain)
+        apply_gain_row.addStretch()
+        gain_layout.addRow("", apply_gain_row)
 
         layout.addWidget(gain_group)
 
@@ -1294,7 +1318,10 @@ class ControlsPage(QWidget):
         apply_exp = make_primary_button("Apply Exposure", ICON_CHECK)
         apply_exp.setToolTip("Send the current exposure value to the sensor")
         apply_exp.clicked.connect(self._apply_exposure)
-        exp_layout.addRow("", apply_exp)
+        apply_exp_row = QHBoxLayout()
+        apply_exp_row.addWidget(apply_exp)
+        apply_exp_row.addStretch()
+        exp_layout.addRow("", apply_exp_row)
 
         layout.addWidget(exp_group)
 
@@ -1307,30 +1334,16 @@ class ControlsPage(QWidget):
         self.hdr_combo = QComboBox()
         self.hdr_combo.addItems(["Off", "On"])
         self.hdr_combo.setToolTip("Enable or disable High Dynamic Range mode")
-        self.hdr_combo.setStyleSheet(f"""
-            QComboBox {{
-                padding: 6px 12px; border: 1px solid {MACOS_BORDER};
-                border-radius: 8px; background: white; font-size: 13px;
-                min-width: 120px;
-            }}
-            QComboBox:hover {{
-                border-color: {MACOS_BLUE};
-            }}
-            QComboBox::drop-down {{
-                border: none; width: 24px;
-            }}
-            QComboBox QAbstractItemView {{
-                border: 1px solid {MACOS_BORDER}; border-radius: 8px;
-                background: white; selection-background-color: {MACOS_BLUE};
-                selection-color: white; padding: 4px;
-            }}
-        """)
+        self.hdr_combo.setStyleSheet(combo_style())
         hdr_layout.addRow(QLabel("HDR Mode"), self.hdr_combo)
 
         apply_hdr = make_primary_button("Apply HDR", ICON_CHECK)
         apply_hdr.setToolTip("Send the HDR mode selection to the sensor")
         apply_hdr.clicked.connect(self._apply_hdr)
-        hdr_layout.addRow("", apply_hdr)
+        apply_hdr_row = QHBoxLayout()
+        apply_hdr_row.addWidget(apply_hdr)
+        apply_hdr_row.addStretch()
+        hdr_layout.addRow("", apply_hdr_row)
 
         layout.addWidget(hdr_group)
         layout.addStretch()
@@ -1355,10 +1368,13 @@ class ControlsPage(QWidget):
 class CapturePage(QWidget):
     """Frame capture and save."""
 
+    _capture_finished = Signal(list)
+
     def __init__(self, client: GrpcClient, parent=None):
         super().__init__(parent)
         self.client = client
         self.setup_ui()
+        self._capture_finished.connect(self._on_capture_finished)
 
     def setup_ui(self):
         layout = QVBoxLayout(self)
@@ -1395,13 +1411,7 @@ class CapturePage(QWidget):
         self.cap_format = QComboBox()
         self.cap_format.addItems(["RAW10", "PGM"])
         self.cap_format.setToolTip("Output format for captured frames")
-        self.cap_format.setStyleSheet(self.hdr_combo.styleSheet() if hasattr(self, 'hdr_combo') else f"""
-            QComboBox {{
-                padding: 6px 12px; border: 1px solid {MACOS_BORDER};
-                border-radius: 8px; background: white; font-size: 13px;
-                min-width: 120px;
-            }}
-        """)
+        self.cap_format.setStyleSheet(combo_style())
         cap_layout.addRow(QLabel("Format"), self.cap_format)
 
         btn_row = QHBoxLayout()
@@ -1459,20 +1469,30 @@ class CapturePage(QWidget):
             return
         self.capture_btn.setEnabled(False)
         self.capture_loading.show()
-        QApplication.processEvents()
 
         count = self.cap_count.value()
-        frames = []
-        for i in range(count):
-            frame = self.client.capture_frame()
-            if frame:
-                frames.append(frame)
-                self._last_frame = frame
 
+        # A burst of up to 100 frames runs each capture_frame() RPC in
+        # sequence; doing that on the GUI thread froze the whole window
+        # for the entire burst. Run it in the background and marshal the
+        # result back via a signal (safe across threads, same pattern
+        # GrpcClient uses for its status stream).
+        def _do_capture():
+            frames = []
+            for _ in range(count):
+                frame = self.client.capture_frame()
+                if frame:
+                    frames.append(frame)
+            self._capture_finished.emit(frames)
+
+        threading.Thread(target=_do_capture, daemon=True).start()
+
+    def _on_capture_finished(self, frames: list):
         self.capture_loading.hide()
         self.capture_btn.setEnabled(True)
 
         if frames:
+            self._last_frame = frames[-1]
             self.frame_info.setText(
                 f"Captured {len(frames)} frame(s)\n"
                 f"Size: {frames[0]['width']}×{frames[0]['height']}\n"
@@ -1706,6 +1726,12 @@ class TestPatternPage(QWidget):
             btn.clicked.connect(lambda checked, v=val: self._select_pattern(v))
             grid.addWidget(btn, i // 3, i % 3)
             self.pattern_btns.append(btn)
+
+        # Without this, QGridLayout spreads its 3 columns evenly across the
+        # full page width, leaving huge gaps between fixed-size buttons.
+        # A trailing stretch column collects the extra space on the right
+        # instead, so the buttons pack tightly together.
+        grid.setColumnStretch(3, 1)
 
         layout.addLayout(grid)
 
@@ -1957,7 +1983,11 @@ class InfoPage(QWidget):
         <i>Version 0.1.0 — GPL-2.0-only</i>
         </p>
         """)
-        layout.addWidget(info_text)
+        # Stretch factor 1: otherwise the trailing addStretch() below claims
+        # all the extra vertical space instead, squeezing this long panel
+        # into a tiny scrolling box and leaving a big empty gap at the
+        # bottom of the page.
+        layout.addWidget(info_text, 1)
 
         # Modes table
         self.modes_table = QTextEdit()
@@ -1975,9 +2005,10 @@ class InfoPage(QWidget):
         refresh_btn = make_primary_button("  Refresh Modes", ICON_REFRESH)
         refresh_btn.setToolTip("Fetch the latest list of supported sensor modes from the server")
         refresh_btn.clicked.connect(self._refresh_modes)
-        layout.addWidget(refresh_btn)
-
-        layout.addStretch()
+        refresh_row = QHBoxLayout()
+        refresh_row.addWidget(refresh_btn)
+        refresh_row.addStretch()
+        layout.addLayout(refresh_row)
 
     def _refresh_modes(self):
         if not self.client.connected:
@@ -2057,7 +2088,9 @@ class ConnectionDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("Server Connections")
         self.setModal(True)
-        self.setFixedSize(520, 480)
+        # Wide enough that "Add Server / Edit / Remove / Test / Connect"
+        # never clips — 520px was too narrow for that many buttons in a row.
+        self.setFixedSize(640, 480)
         self.setStyleSheet(f"""
             QDialog {{
                 background: {MACOS_BG};
@@ -2085,7 +2118,12 @@ class ConnectionDialog(QDialog):
         desc.setWordWrap(True)
         layout.addWidget(desc)
 
-        # Server list
+        # Server list. Selection/hover backgrounds are deliberately NOT
+        # styled here via "QListWidget::item:selected" — the view paints
+        # that behind each row using the item's own (empty) text/decoration
+        # metrics, which came out roughly half the height of our custom
+        # per-row widget and left a mismatched highlight. Each row widget
+        # paints its own selection state instead (see _update_row_styles).
         self.list_widget = QListWidget()
         self.list_widget.setStyleSheet(f"""
             QListWidget {{
@@ -2094,14 +2132,8 @@ class ConnectionDialog(QDialog):
                 font-size: 13px;
             }}
             QListWidget::item {{
-                padding: 10px 12px; border-radius: 6px;
+                border-radius: 6px;
                 margin: 2px;
-            }}
-            QListWidget::item:selected {{
-                background: {MACOS_BLUE}; color: white;
-            }}
-            QListWidget::item:hover {{
-                background: {MACOS_SEPARATOR};
             }}
         """)
         self.list_widget.itemSelectionChanged.connect(self._on_selection_changed)
@@ -2158,29 +2190,31 @@ class ConnectionDialog(QDialog):
         for server in self.servers:
             item = QListWidgetItem()
             item.setData(Qt.UserRole, server)
-            
+
             # Create custom widget for each item
             widget = QWidget()
+            widget.setObjectName("serverRow")
             w_layout = QHBoxLayout(widget)
-            w_layout.setContentsMargins(8, 4, 8, 4)
+            w_layout.setContentsMargins(10, 8, 10, 8)
             w_layout.setSpacing(10)
 
             # Status indicator
             status_lbl = QLabel("●")
-            status_lbl.setStyleSheet(f"color: {MACOS_TERTIARY}; font-size: 12px;")
+            status_lbl.setObjectName("serverStatusDot")
+            status_lbl.setStyleSheet(f"color: {MACOS_TERTIARY}; font-size: 12px; background: transparent;")
             status_lbl.setFixedWidth(16)
             w_layout.addWidget(status_lbl)
 
             # Server info
             info_layout = QVBoxLayout()
             info_layout.setSpacing(2)
-            
+
             name_lbl = QLabel(server.get('name', 'Unnamed'))
-            name_lbl.setStyleSheet(f"font-weight: 600; color: {MACOS_TEXT}; font-size: 13px;")
+            name_lbl.setObjectName("serverName")
             info_layout.addWidget(name_lbl)
 
             addr_lbl = QLabel(server.get('address', ''))
-            addr_lbl.setStyleSheet(f"color: {MACOS_SECONDARY}; font-size: 12px; font-family: monospace;")
+            addr_lbl.setObjectName("serverAddr")
             info_layout.addWidget(addr_lbl)
 
             w_layout.addLayout(info_layout)
@@ -2196,16 +2230,48 @@ class ConnectionDialog(QDialog):
                 except Exception:
                     last_str = last
                 last_lbl = QLabel(last_str)
-                last_lbl.setStyleSheet(f"color: {MACOS_TERTIARY}; font-size: 12px;")
+                last_lbl.setObjectName("serverLast")
                 w_layout.addWidget(last_lbl)
 
-            item.setSizeHint(widget.sizeHint())
+            # QListWidget doesn't reliably stretch an embedded item widget
+            # to match widget.sizeHint() once it's actually parented into
+            # the view — it was collapsing to a single text line, so the
+            # stacked name/address labels overlapped instead of stacking.
+            # A hard minimum height keeps the two-line layout intact.
+            widget.setMinimumHeight(48)
+            item.setSizeHint(QSize(widget.sizeHint().width(), 48))
             self.list_widget.addItem(item)
             self.list_widget.setItemWidget(item, widget)
 
         # Select first item
         if self.list_widget.count() > 0:
             self.list_widget.setCurrentRow(0)
+        self._update_row_styles()
+
+    def _update_row_styles(self):
+        """Paint each row's selection state on the row widget itself."""
+        for i in range(self.list_widget.count()):
+            item = self.list_widget.item(i)
+            widget = self.list_widget.itemWidget(item)
+            if not widget:
+                continue
+            selected = item.isSelected()
+            bg = MACOS_BLUE if selected else "transparent"
+            name_color = "white" if selected else MACOS_TEXT
+            addr_color = "rgba(255,255,255,0.85)" if selected else MACOS_SECONDARY
+            last_color = "rgba(255,255,255,0.75)" if selected else MACOS_TERTIARY
+            widget.setStyleSheet(f"QWidget#serverRow {{ background: {bg}; border-radius: 6px; }}")
+            name_lbl = widget.findChild(QLabel, "serverName")
+            if name_lbl:
+                name_lbl.setStyleSheet(
+                    f"font-weight: 600; color: {name_color}; font-size: 13px; background: transparent;")
+            addr_lbl = widget.findChild(QLabel, "serverAddr")
+            if addr_lbl:
+                addr_lbl.setStyleSheet(
+                    f"color: {addr_color}; font-size: 12px; font-family: monospace; background: transparent;")
+            last_lbl = widget.findChild(QLabel, "serverLast")
+            if last_lbl:
+                last_lbl.setStyleSheet(f"color: {last_color}; font-size: 12px; background: transparent;")
 
     def _on_selection_changed(self):
         has_selection = len(self.list_widget.selectedItems()) > 0
@@ -2213,6 +2279,7 @@ class ConnectionDialog(QDialog):
         self.remove_btn.setEnabled(has_selection)
         self.test_btn.setEnabled(has_selection)
         self.connect_btn.setEnabled(has_selection)
+        self._update_row_styles()
 
     def _get_selected_server(self) -> Optional[Dict]:
         items = self.list_widget.selectedItems()
@@ -2298,10 +2365,10 @@ class ConnectionDialog(QDialog):
             if server.get('address') == addr:
                 widget = self.list_widget.itemWidget(item)
                 if widget:
-                    status_lbl = widget.findChild(QLabel)
+                    status_lbl = widget.findChild(QLabel, "serverStatusDot")
                     if status_lbl:
                         status_lbl.setStyleSheet(
-                            f"color: {MACOS_GREEN if success else MACOS_RED}; font-size: 12px;"
+                            f"color: {MACOS_GREEN if success else MACOS_RED}; font-size: 12px; background: transparent;"
                         )
                         status_lbl.setText("●")
                 break
@@ -2476,15 +2543,21 @@ class MainWindow(QMainWindow):
         self.sidebar.set_connected(False)
         main_layout.addWidget(self.sidebar)
 
-        # Content area with subtle shadow separator
+        # Content area with subtle shadow separator.
+        # Both style rules below are deliberately scoped (objectName for the
+        # plain QWidget, class name for QStackedWidget which nothing else
+        # subclasses). An unscoped "background: ..." declaration is treated
+        # as a universal rule and was leaking a grey pill-shaped background
+        # onto every QFormLayout row across all seven pages.
         content_widget = QWidget()
-        content_widget.setStyleSheet(f"background: {MACOS_BG};")
+        content_widget.setObjectName("contentArea")
+        content_widget.setStyleSheet(f"QWidget#contentArea {{ background: {MACOS_BG}; }}")
         content_layout = QVBoxLayout(content_widget)
         content_layout.setContentsMargins(0, 0, 0, 0)
         content_layout.setSpacing(0)
 
         self.stack = QStackedWidget()
-        self.stack.setStyleSheet(f"background: {MACOS_BG};")
+        self.stack.setStyleSheet(f"QStackedWidget {{ background: {MACOS_BG}; }}")
 
         self.pages = [
             DashboardPage(self.client),
@@ -2554,7 +2627,9 @@ class MainWindow(QMainWindow):
         servers_menu = file_menu.addMenu("Servers")
 
         manage_action = QAction("Manage Servers...", self)
-        manage_action.setShortcut("Ctrl+M")
+        # Ctrl+Shift+M, not Ctrl+M — that collides with Window > Minimize
+        # (an ambiguous shortcut in Qt means *neither* action fires).
+        manage_action.setShortcut("Ctrl+Shift+M")
         manage_action.triggered.connect(self._show_server_dialog)
         servers_menu.addAction(manage_action)
 
@@ -2582,34 +2657,44 @@ class MainWindow(QMainWindow):
         file_menu.addAction(quit_action)
 
         # ── Edit ──
+        # Every action routes to whichever text field currently has focus.
+        # Without a connected slot, these still capture their global
+        # shortcut (Ctrl+C, Ctrl+V, ...) and silently swallow it before it
+        # reaches a focused QLineEdit/QTextEdit — breaking copy/paste there.
         edit_menu = menubar.addMenu("Edit")
 
         undo_action = QAction("Undo", self)
         undo_action.setShortcut(QKeySequence.StandardKey.Undo)
+        undo_action.triggered.connect(lambda: self._route_edit_action("undo"))
         edit_menu.addAction(undo_action)
 
         redo_action = QAction("Redo", self)
         redo_action.setShortcut(QKeySequence.StandardKey.Redo)
+        redo_action.triggered.connect(lambda: self._route_edit_action("redo"))
         edit_menu.addAction(redo_action)
 
         edit_menu.addSeparator()
 
         cut_action = QAction("Cut", self)
         cut_action.setShortcut(QKeySequence.StandardKey.Cut)
+        cut_action.triggered.connect(lambda: self._route_edit_action("cut"))
         edit_menu.addAction(cut_action)
 
         copy_action = QAction("Copy", self)
         copy_action.setShortcut(QKeySequence.StandardKey.Copy)
+        copy_action.triggered.connect(lambda: self._route_edit_action("copy"))
         edit_menu.addAction(copy_action)
 
         paste_action = QAction("Paste", self)
         paste_action.setShortcut(QKeySequence.StandardKey.Paste)
+        paste_action.triggered.connect(lambda: self._route_edit_action("paste"))
         edit_menu.addAction(paste_action)
 
         edit_menu.addSeparator()
 
         select_all_action = QAction("Select All", self)
         select_all_action.setShortcut(QKeySequence.StandardKey.SelectAll)
+        select_all_action.triggered.connect(lambda: self._route_edit_action("selectAll"))
         edit_menu.addAction(select_all_action)
 
         # ── View ──
@@ -2683,6 +2768,13 @@ class MainWindow(QMainWindow):
         about_action.setMenuRole(QAction.AboutRole)
         about_action.triggered.connect(self._show_about)
         help_menu.addAction(about_action)
+
+    def _route_edit_action(self, method_name: str):
+        """Forward an Edit-menu command to whichever field has focus."""
+        widget = QApplication.focusWidget()
+        method = getattr(widget, method_name, None)
+        if callable(method):
+            method()
 
     def _update_recent_servers_menu(self, menu):
         """Update the recent servers submenu."""
@@ -2769,6 +2861,12 @@ class MainWindow(QMainWindow):
             if hasattr(self, 'view_actions'):
                 for i, action in enumerate(self.view_actions):
                     action.setChecked(i == index)
+            # Keep the sidebar highlight in sync — this method can be
+            # reached from the View menu or a shortcut, not just a sidebar
+            # click, which already updates its own buttons before emitting.
+            if hasattr(self, 'sidebar'):
+                for i, btn in enumerate(self.sidebar.buttons):
+                    btn.setChecked(i == index)
 
     def _toggle_sidebar(self, visible: bool):
         """Toggle sidebar visibility."""
@@ -2836,15 +2934,22 @@ def main():
                         help="gRPC server address (default: from config, or localhost:50051)")
     args = parser.parse_args()
 
+    # Qt6 handles HiDPI pixmaps automatically; AA_UseHighDpiPixmaps is a
+    # deprecated no-op that only prints a warning on startup.
     app = QApplication(sys.argv)
-    app.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
 
     # Set application icon (used for window icon on some platforms)
     app.setWindowIcon(make_icon(ICON_CAMERA, 32, MACOS_BLUE))
 
-    # macOS-like font
+    # Prefer each platform's native system font, with Linux desktop fonts
+    # and a generic sans-serif as the last-resort fallback.
     font = QFont()
-    font.setFamilies(["SF Pro Display", "Helvetica Neue", "Segoe UI", "Arial"])
+    font.setFamilies([
+        "SF Pro Display", "Helvetica Neue",   # macOS
+        "Segoe UI",                           # Windows
+        "Ubuntu", "Cantarell", "Noto Sans", "DejaVu Sans",  # Linux desktops
+        "Arial", "sans-serif",
+    ])
     font.setPointSize(13)
     app.setFont(font)
 

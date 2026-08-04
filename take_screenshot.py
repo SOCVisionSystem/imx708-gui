@@ -11,8 +11,7 @@ import argparse
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'build'))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'imx708_proto'))
 
-from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QPixmap
+from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QApplication
 
 def main():
@@ -22,7 +21,6 @@ def main():
     args = parser.parse_args()
 
     app = QApplication(sys.argv)
-    app.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
 
     from imx708_client import MainWindow
 
