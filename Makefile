@@ -12,10 +12,9 @@
 #
 
 GUI_DIR    := $(CURDIR)
-# NOT "build/": that is setuptools' own scratch directory and it wipes the
-# generated stubs during packaging.
 PROTO_DIR  := $(GUI_DIR)/imx708_proto
 CLIENT_PY  := $(GUI_DIR)/imx708_client.py
+GUI_PKG    := $(GUI_DIR)/imx708_gui
 SERVER     ?= localhost:50051
 
 # Prefer uv when it is available, otherwise drive the system interpreter.
@@ -49,6 +48,7 @@ $(PROTO_DIR)/imx708_pb2.py: proto/imx708.proto
 clean:
 	rm -rf $(PROTO_DIR)
 	rm -rf build/ dist/ __pycache__/ *.spec *.egg-info/
+	find $(GUI_PKG) -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 
 distclean: clean
 	rm -rf .venv/

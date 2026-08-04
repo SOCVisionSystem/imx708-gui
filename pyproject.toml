@@ -26,14 +26,14 @@ imx708-cam = "imx708_client:main"
 requires = ["setuptools>=68.0"]
 build-backend = "setuptools.build_meta"
 
-# imx708_client is a single module, not a package. "packages.find" only ever
-# discovers directories containing __init__.py, so the previous configuration
-# installed nothing at all and the imx708-cam entry point failed on import.
+# imx708_client is now a package under imx708_gui/. The entry point
+# script is imx708_client.py which imports from the package.
 [tool.setuptools]
-py-modules = ["imx708_client"]
+py-modules = []
 
 [tool.setuptools.packages.find]
-include = ["imx708_proto*"]
+include = ["imx708_gui*", "imx708_proto*"]
 
 [tool.setuptools.package-data]
 imx708_proto = ["*.py"]
+imx708_gui = ["*.py"]
