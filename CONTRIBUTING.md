@@ -7,7 +7,7 @@ and code.
 ## Quick Start
 
 ```bash
-git clone https://github.com/SOCVisionSystem/imx708.git
+git clone https://github.com/soccentric-vision-system/imx708.git
 cd imx708/imx708-gui
 make deps
 make all
